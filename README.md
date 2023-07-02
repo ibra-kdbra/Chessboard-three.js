@@ -37,11 +37,8 @@ To run the game, clone this repository and open the `index.html` file in your we
 
 - Three.js library: https://threejs.org/
 - Stockfish AI: https://stockfishchess.org/
-- Wood texture: https://www.textures.com/browse/wood/116700
-- Chess pieces: https://sketchfab.com/3d-models/chess-set-3cb8c8f8d75b4ce7b1f9e23be1dc8d6e
 - Piece move sounds: https://freesound.org/people/Steveygos93/sounds/346794/
 - Check and checkmate sounds: https://freesound.org/people/Kodack/sounds/258020/
-- Victory sound: https://freesound.org/people/Soughtaftersounds/sounds/145943/
 
 ## Conclusion
 
