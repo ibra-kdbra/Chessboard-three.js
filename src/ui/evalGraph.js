@@ -38,7 +38,9 @@ export function buildEvalGraph(nodes, { width = 320, height = 72, onSelect } = {
     class: 'evalgraph',
     viewBox: `0 0 ${width} ${height}`,
     preserveAspectRatio: 'none',
-    role: 'img',
+    // Not role="img": the markers inside are interactive, and everything in an
+    // img subtree is hidden from assistive technology.
+    role: 'group',
     'aria-label': 'Evaluation over the course of the game',
   });
 
@@ -102,6 +104,11 @@ export function buildEvalGraph(nodes, { width = 320, height = 72, onSelect } = {
     if (onSelect) {
       marker.setAttribute('role', 'button');
       marker.setAttribute('tabindex', '0');
+      marker.setAttribute(
+        'aria-label',
+        `${node.moveNumber}${node.color === 'w' ? '.' : '…'} ${node.move.san}, ` +
+          `${QUALITY_META[node.quality].label}`,
+      );
       marker.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();

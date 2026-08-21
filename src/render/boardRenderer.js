@@ -20,6 +20,8 @@
  * @property {(theme: object) => void} setTheme
  * @property {(set: string) => Promise<void>} setPieceSet
  * @property {(enabled: boolean) => void} setInteractive
+ * @property {(enabled: boolean) => void} setShowNotation
+ * @property {(enabled: boolean) => void} setReducedMotion
  * @property {() => void} resize
  * @property {() => void} destroy
  * @property {object} capabilities
@@ -34,6 +36,8 @@ export const RENDERER_METHODS = Object.freeze([
   'setTheme',
   'setPieceSet',
   'setInteractive',
+  'setShowNotation',
+  'setReducedMotion',
   'resize',
   'destroy',
 ]);

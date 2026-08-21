@@ -182,7 +182,10 @@ export class PieceFactory {
     group.userData.mesh = mesh;
 
     if (this.contactShadows) {
-      const shadow = new Mesh(this.shadowGeometry, this.shadowMaterial);
+      // Cloned per piece: the fade-out of a captured piece animates its shadow
+      // material's opacity, and on a shared material that faded every shadow on
+      // the board at once.
+      const shadow = new Mesh(this.shadowGeometry, this.shadowMaterial.clone());
       shadow.position.y = 0.012;
       shadow.renderOrder = -1;
       shadow.userData.isContactShadow = true;
@@ -221,6 +224,7 @@ export class PieceFactory {
 
   dispose(group) {
     group.userData.mesh?.material.dispose();
+    group.userData.contactShadow?.material.dispose();
     group.clear();
   }
 

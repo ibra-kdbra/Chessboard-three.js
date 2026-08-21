@@ -14,7 +14,7 @@ export class MoveList {
   constructor({ onSelect }) {
     this.onSelect = onSelect;
     this.element = el('div.movelist', {
-      role: 'list',
+      role: 'group',
       'aria-label': 'Moves',
       on: {
         click: (event) => {
@@ -33,7 +33,9 @@ export class MoveList {
       'button.movelist__move',
       {
         type: 'button',
-        role: 'listitem',
+        // No role override: role="listitem" replaced the implicit button role,
+        // so a screen reader announced each move as inert text and none of them
+        // appeared when listing the page's controls.
         dataset: { nodeId: node.id },
         'aria-current': String(node.id === currentId),
         title: quality?.label ?? '',

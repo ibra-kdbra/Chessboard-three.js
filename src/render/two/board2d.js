@@ -583,6 +583,12 @@ export class Board2D extends Emitter {
     this.ticker.reducedMotion = enabled;
   }
 
+  /** Shows or hides the rank and file labels. */
+  setShowNotation(enabled) {
+    this.config.showNotation = enabled;
+    this.#dirty = true;
+  }
+
   clearSelection() {
     this.selected = null;
     this.#dirty = true;

@@ -46,6 +46,8 @@ export class BoardInteraction {
       selected: null,
       hover: null,
       rightPress: null,
+      /** Which pointer owns the drag. A phone reports several at once. */
+      pointerId: null,
     };
 
     this.#bind();
@@ -111,9 +113,14 @@ export class BoardInteraction {
     }
     if (event.button !== 0) return;
 
+    // A second finger touching the board mid-drag must not take it over, or
+    // the first piece is left levitating where it was dropped.
+    if (this.state.pressed && this.state.pointerId !== event.pointerId) return;
+
     this.state.pressed = square;
     this.state.pressPoint = { x: event.clientX, y: event.clientY };
     this.state.dragging = false;
+    this.state.pointerId = event.pointerId;
 
     if (square && this.options.canPickUp(square)) {
       // Capture so a fast drag that leaves the canvas still reports up.
@@ -131,6 +138,7 @@ export class BoardInteraction {
     }
 
     if (!this.state.pressed || !this.state.pressPoint) return;
+    if (this.state.pointerId !== null && this.state.pointerId !== event.pointerId) return;
 
     if (!this.state.dragging) {
       const travelled = Math.hypot(
@@ -149,8 +157,20 @@ export class BoardInteraction {
 
   #onPointerUp(event) {
     if (!this.enabled) return;
+    if (
+      event.button !== 2 &&
+      this.state.pointerId !== null &&
+      this.state.pointerId !== event.pointerId
+    ) {
+      return;
+    }
     const square = this.squareAt(event.clientX, event.clientY);
-    this.options.domElement.releasePointerCapture?.(event.pointerId);
+    try {
+      this.options.domElement.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Some inputs report a pointer that is already gone; releasing it is a
+      // courtesy, and throwing here used to strand the board mid-drag.
+    }
 
     if (event.button === 2) {
       const from = this.state.rightPress;
@@ -202,9 +222,14 @@ export class BoardInteraction {
     this.options.onSelect?.(square);
   }
 
-  /** Lets the host clear selection (after a move arrives from elsewhere). */
-  clearSelection() {
-    if (this.state.selected !== null) this.#select(null);
+  /**
+   * Lets the host clear the selection after a move arrives from elsewhere.
+   * `silent` suppresses the event, since the host already knows.
+   */
+  clearSelection({ silent = false } = {}) {
+    if (this.state.selected === null) return;
+    this.state.selected = null;
+    if (!silent) this.options.onSelect?.(null);
   }
 
   #onPointerLeave() {
@@ -223,6 +248,12 @@ export class BoardInteraction {
     this.state.pressed = null;
     this.state.pressPoint = null;
     this.state.dragging = false;
+    this.state.pointerId = null;
+  }
+
+  /** Drops any drag in progress without reporting it as a move. */
+  cancelDrag() {
+    this.#reset();
   }
 
   setEnabled(enabled) {

@@ -219,6 +219,11 @@ export class Session extends Emitter {
     // Lozza never returns from a search of a mated or stalemated position.
     if (this.state.chess.isGameOver()) return null;
 
+    // Remember where the search started. The player is free to step back
+    // through the game while the computer thinks, and its reply belongs to the
+    // position it was computed for — not to whatever they are looking at.
+    const searchNode = this.state.node;
+
     this.thinking = true;
     this.thinkingReason = 'opponent';
     this.emit('thinking', { thinking: true });
@@ -248,6 +253,11 @@ export class Session extends Emitter {
       return null;
     }
 
+    // Put the cursor back on the searched position, play there, then restore
+    // the player's view if they had moved it.
+    const viewing = this.state.node;
+    if (viewing !== searchNode) this.state.goTo(searchNode);
+
     const played = this.state.move(choice.san ?? choice.move, {
       timeSpent: Math.round(choice.elapsedMs),
       clock: this.clock.isUntimed ? undefined : this.clock.timeLeft(this.state.turn),
@@ -258,6 +268,9 @@ export class Session extends Emitter {
       this.state.node.evaluation = { ...choice.evaluation, value: choice.evaluation.value * sign };
     }
     this.#afterMove();
+    if (viewing !== searchNode && this.state.tree.findById(viewing.id)) {
+      this.state.goTo(viewing);
+    }
 
     // Let a queued human move through now that the engine has answered.
     if (played && this.premove) {
@@ -319,8 +332,15 @@ export class Session extends Emitter {
    */
   async takeback() {
     await this.cancelThinking();
+    // A resignation or agreed draw is not a move, so undoing moves cannot lift
+    // it. Taking back is a statement that the game is not over after all.
+    this.state.adjudication = null;
+    this.clock.flagged = null;
     this.state.toEnd();
-    if (this.state.ply === 0) return;
+    if (this.state.ply === 0) {
+      this.emit('status', this.status());
+      return;
+    }
 
     // One ply always. A second only if it exists and it was the computer's.
     this.state.undo();
@@ -446,6 +466,19 @@ export class Session extends Emitter {
       clock: this.clock.toJSON(),
       state: this.state.toJSON(),
     };
+  }
+
+  /** Restores a persisted clock. Without this a reload handed back full time. */
+  restoreClock(saved) {
+    if (!saved || saved.initial === null || saved.initial === undefined) return;
+    this.clock.reset({ initial: saved.initial, increment: saved.increment });
+    this.clock.delayMode = saved.delayMode ?? this.clock.delayMode;
+    this.clock.remaining = {
+      w: saved.remaining?.w ?? saved.initial,
+      b: saved.remaining?.b ?? saved.initial,
+    };
+    this.clock.flagged = saved.flagged ?? null;
+    this.startClock();
   }
 
   dispose() {

@@ -11,7 +11,9 @@ const DEFAULT_MS = 3200;
 
 export class Toaster {
   constructor(parent = document.body) {
-    this.element = el('div.toasts', { role: 'status', 'aria-live': 'polite' });
+    // No live region here: announce() owns one, and two regions covering the
+    // same text make a screen reader read every toast twice.
+    this.element = el('div.toasts');
     parent.append(this.element);
   }
 

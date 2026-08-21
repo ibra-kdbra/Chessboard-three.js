@@ -44,7 +44,8 @@ export class EvalBar {
     // Keep the number on whichever side has room for it.
     this.value.dataset.side = whiteShare > 0.5 ? 'bottom' : 'top';
 
-    this.element.setAttribute('aria-valuenow', String(Math.round(share * 100)));
+    // The meter reports what the viewer sees, so it flips with the board.
+    this.element.setAttribute('aria-valuenow', String(Math.round(whiteShare * 100)));
     this.element.setAttribute(
       'aria-valuetext',
       evaluation

@@ -91,6 +91,8 @@ export class Board3D extends Emitter {
 
   #dirty = true;
   #startedAt = 0;
+  /** Bumped by every setPosition, so a stale one knows not to finish. */
+  #positionEpoch = 0;
   #frameHandle = null;
   #dragging = null;
 
@@ -191,6 +193,26 @@ export class Board3D extends Emitter {
   }
 
   // ------------------------------------------------------------------ pieces
+
+  /**
+   * Drops a drag without emitting a move.
+   *
+   * A drag that outlives the position it started in would otherwise put the
+   * piece back on a square whose contents have changed, leaving it rendered
+   * somewhere it does not belong for the rest of the game.
+   */
+  #abandonDrag() {
+    const drag = this.#dragging;
+    this.#dragging = null;
+    if (this.controls) this.controls.enabled = true;
+    this.interaction.cancelDrag();
+    const group = this.pieces.get(drag.square);
+    if (group === drag.group) {
+      const target = squareToWorld(drag.square, this._orientation);
+      group.position.set(target.x, 0, target.z);
+    }
+    this.#dirty = true;
+  }
 
   #drawInstant(position) {
     for (const group of this.pieces.values()) {
@@ -325,6 +347,8 @@ export class Board3D extends Emitter {
    */
   async setPosition(position, { animate = true } = {}) {
     const target = typeof position === 'string' ? fenToPosition(position) : { ...position };
+    // A drag in flight refers to squares that may no longer hold what it thinks.
+    if (this.#dragging) this.#abandonDrag();
     if (!this.factory) {
       // Geometry still loading; remember it and draw once it lands.
       this.position = target;
@@ -335,6 +359,7 @@ export class Board3D extends Emitter {
       return;
     }
 
+    const epoch = ++this.#positionEpoch;
     const plan = calculateAnimations(this.position, target);
     const jobs = [];
     // Captures start slightly late so the arriving piece is visibly the cause.
@@ -366,6 +391,9 @@ export class Board3D extends Emitter {
 
     this.position = target;
     await Promise.all(jobs);
+    // A newer call has already taken over; reconciling to this call's target
+    // would rewrite the board back to a position that is no longer current.
+    if (epoch !== this.#positionEpoch) return;
     // The plan is a heuristic; reconcile so a surprising diff cannot desync us.
     this.#reconcile(target);
     this.emit('positionchange', target);
@@ -412,6 +440,9 @@ export class Board3D extends Emitter {
     if (next === this._orientation) return this._orientation;
     this._orientation = next;
     this.highlights.setOrientation(next);
+    // Tweens write absolute coordinates computed for the old orientation, so
+    // anything still moving would land on the mirrored square.
+    this.ticker.finishAll();
 
     // The board itself never rotates — pieces are re-placed and the camera
     // swings round. Keeping the world fixed means overlays and arrows need no
@@ -557,10 +588,21 @@ export class Board3D extends Emitter {
     this.ticker.reducedMotion = enabled;
   }
 
-  /** Clears the selection without emitting a user-initiated select. */
+  /** Shows or hides the rank and file labels. */
+  setShowNotation(enabled) {
+    this.config.showNotation = enabled;
+    if (this.board.notation) this.board.notation.visible = enabled;
+    this.#dirty = true;
+  }
+
+  /**
+   * Clears the selection without emitting a user-initiated select — the host
+   * calls this after applying a move, and a host that plays a sound on
+   * 'select' should not hear one for its own bookkeeping.
+   */
   clearSelection() {
     this.#selected = null;
-    this.interaction.clearSelection();
+    this.interaction.clearSelection({ silent: true });
     this.#refreshHighlights();
   }
 
@@ -578,6 +620,8 @@ export class Board3D extends Emitter {
 
   destroy() {
     this.destroyed = true;
+    // Nothing pending may rebuild pieces on a board that is going away.
+    this.#positionEpoch++;
     if (this.#frameHandle !== null) cancelAnimationFrame(this.#frameHandle);
     this.#frameHandle = null;
     this.resizeObserver?.disconnect();
@@ -598,7 +642,7 @@ export class Board3D extends Emitter {
   #beginDrag(square) {
     const group = this.pieces.get(square);
     if (!group) return;
-    this.#dragging = { square, group, origin: group.position.clone() };
+    this.#dragging = { square, group };
     if (this.controls) this.controls.enabled = false;
     this.#selected = square;
     this.#refreshHighlights();

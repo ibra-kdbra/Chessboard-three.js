@@ -46,6 +46,7 @@ export class KeyboardControl {
     this.cursor = 'e1';
     this.typed = '';
     this.enabled = true;
+    this.orientation = 'white';
     this.#bind();
   }
 
@@ -143,9 +144,14 @@ export class KeyboardControl {
     }
     if (event.key === 'Enter' && this.typed) {
       event.preventDefault();
-      const accepted = this.options.onTyped?.(this.typed.trim());
-      if (accepted) this.typed = '';
-      this.#resetTypedTimer();
+      const typed = this.typed.trim();
+      // onTyped is async: playing a move can have to cancel a hint first. Read
+      // the verdict after it settles, or a move that WAS played is announced as
+      // illegal and left in the buffer.
+      Promise.resolve(this.options.onTyped?.(typed)).then((accepted) => {
+        if (accepted && this.typed === typed) this.typed = '';
+        this.#resetTypedTimer();
+      });
       return;
     }
     if (event.key === 'Escape') {
@@ -174,8 +180,11 @@ export class KeyboardControl {
     const delta = deltas[keyName];
     if (!delta) return false;
 
-    let file = FILES.indexOf(this.cursor[0]) + delta[0];
-    let rank = RANKS.indexOf(this.cursor[1]) + delta[1];
+    // Arrows are relative to what the player sees. With the board flipped,
+    // "up" is towards rank 1, and a cursor that ignored that moved backwards.
+    const sign = this.orientation === 'black' ? -1 : 1;
+    let file = FILES.indexOf(this.cursor[0]) + delta[0] * sign;
+    let rank = RANKS.indexOf(this.cursor[1]) + delta[1] * sign;
     file = Math.max(0, Math.min(7, file));
     rank = Math.max(0, Math.min(7, rank));
     this.cursor = `${FILES[file]}${RANKS[rank]}`;

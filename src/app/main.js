@@ -10,38 +10,29 @@
  * here.
  */
 import { Session } from './session.js';
-import { KeyboardControl, SHORTCUTS } from './keyboard.js';
+import { KeyboardControl } from './keyboard.js';
 import * as store from './persistence.js';
-import { Board3D, CAMERA_MODES } from '../render/three/board3d.js';
-import { Board2D, PIECE_IMAGE_SETS } from '../render/two/board2d.js';
+import { Board3D } from '../render/three/board3d.js';
+import { Board2D } from '../render/two/board2d.js';
 import { webGLEnabled } from '../render/three/scene.js';
-import { THEMES, ACCESSIBLE_HIGHLIGHTS, getTheme } from '../render/three/themes.js';
-import { PIECE_SETS } from '../render/three/pieces.js';
+import { ACCESSIBLE_HIGHLIGHTS, getTheme } from '../render/three/themes.js';
 import { SoundEngine } from '../audio/soundEngine.js';
 import { ENGINE_PROFILES } from '../engine/engineProfiles.js';
 import { Analyser } from '../engine/analyser.js';
-import { DIFFICULTY_LEVELS } from '../engine/opponent.js';
-import { TIME_CONTROLS } from '../core/clock.js';
-import { el, options, announce, replaceChildren } from '../ui/dom.js';
+import { el, announce, replaceChildren } from '../ui/dom.js';
 import { EvalBar } from '../ui/evalBar.js';
 import { ClockFace } from '../ui/clockFace.js';
 import { MoveList } from '../ui/moveList.js';
 import { EnginePanel } from '../ui/enginePanel.js';
 import { Toaster } from '../ui/toast.js';
-import { showDialog, askPromotion } from '../ui/dialog.js';
+import { askPromotion, showDialog } from '../ui/dialog.js';
 import { buildEvalGraph } from '../ui/evalGraph.js';
-import { describeMove } from '../ui/pieceGlyphs.js';
+import { createDialogs } from './dialogs.js';
+import { PIECE_NAMES, describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
 import { findHangingPieces } from '../core/staticEval.js';
 import { opposite } from '../core/constants.js';
-import {
-  buildShareUrl,
-  clearShareTarget,
-  copyText,
-  downloadText,
-  readShareTarget,
-  suggestFilename,
-} from './share.js';
+import { clearShareTarget, readShareTarget } from './share.js';
 
 export async function bootstrap(root) {
   const settings = store.loadSettings();
@@ -316,7 +307,8 @@ export async function bootstrap(root) {
   /**
    * Guards against a doubled ceremony. Several things can end a game at once —
    * a flag falling on the move that also delivers mate — and each of them
-   * emits, so without this the dialog can open twice.
+   * emits, so without this the dialog can open twice. Reset whenever a
+   * different game starts, or every game after the first ends silently.
    */
   let ceremonyDone = false;
 
@@ -420,8 +412,10 @@ export async function bootstrap(root) {
   async function startNewGame(overrides = {}) {
     ceremonyDone = false;
     await session.newGame({ mode: session.mode, ...overrides });
-    board.orientation(session.playerColor === 'w' ? 'white' : 'black');
-    evalBar.setOrientation(session.playerColor === 'w' ? 'white' : 'black');
+    const facing = session.playerColor === 'w' ? 'white' : 'black';
+    board.orientation(facing);
+    evalBar.setOrientation(facing);
+    keyboard.setOrientation(facing);
     selected = null;
     hintMove = null;
     board.setArrows([]);
@@ -429,6 +423,43 @@ export async function bootstrap(root) {
     syncBoard({ animate: false });
     sound.play('start');
   }
+
+  /**
+   * Everything that swaps in a different game runs through here: reset the
+   * ceremony guard, point the board and the keyboard cursor the right way, and
+   * ask the computer if it is on move.
+   */
+  function adoptGame({ facing = board.orientation(), prompt = false } = {}) {
+    ceremonyDone = false;
+    board.orientation(facing);
+    evalBar.setOrientation(facing);
+    keyboard.setOrientation(facing);
+    syncBoard({ animate: false });
+    if (prompt) session.maybePlayEngineMove();
+  }
+
+  const dialogs = createDialogs({
+    session,
+    board: () => board,
+    settings,
+    toaster,
+    sound,
+    analyser,
+    enginePanel,
+    evalBar,
+    moveList,
+    syncBoard,
+    startNewGame,
+    adoptGame,
+    setDimensions,
+    themeFor,
+    highlightState,
+    renderStatus,
+    applyInterfaceTheme,
+    clearLiveEvaluation: () => {
+      liveEvaluation = null;
+    },
+  });
 
   const actions = {
     back: () => {
@@ -450,6 +481,7 @@ export async function bootstrap(root) {
     flip: () => {
       const next = board.orientation('flip');
       evalBar.setOrientation(next);
+      keyboard.setOrientation(next);
       renderStatus();
     },
     dimensions: () => setDimensions(settings.dimensions === 3 ? 2 : 3),
@@ -483,222 +515,29 @@ export async function bootstrap(root) {
       board.setHighlights(highlightState());
     },
     typing: () => {},
-    help: () => showShortcutHelp(),
-    resign: () => confirmResign(),
+    help: () => dialogs.showShortcutHelp(),
+    resign: () => dialogs.confirmResign(),
     review: () => runPostGameReview(),
-    draw: () => offerDraw(),
-    share: () => shareGame(),
-    exportGame: () => exportGame(),
-    importGame: () => importGame(),
-    library: () => showLibrary(),
-    newGame: () => showNewGameDialog(),
+    draw: () => dialogs.offerDraw(),
+    share: () => dialogs.shareGame(),
+    exportGame: () => dialogs.exportGame(),
+    importGame: () => dialogs.importGame(),
+    library: () => dialogs.showLibrary(),
+    newGame: () => dialogs.showNewGameDialog(),
   };
 
   topbar.setActions(
     [
-      ['Games', 'Browse your finished games', 'library'],
-      ['Import', 'Import a PGN game or FEN position', 'importGame'],
-      ['Export', 'Copy or download this game as PGN', 'exportGame'],
-      ['Share', 'Copy a link to this game', 'share'],
-      ['Draw', 'Offer a draw', 'draw'],
-      ['Resign', 'Resign the game', 'resign', 'danger'],
-      ['New game', 'Start a new game', 'newGame', 'primary'],
+      ['Games', 'Browse your finished games', 'library', '🗀'],
+      ['Import', 'Import a PGN game or FEN position', 'importGame', '↓'],
+      ['Export', 'Copy or download this game as PGN', 'exportGame', '↑'],
+      ['Share', 'Copy a link to this game', 'share', '↗'],
+      ['Draw', 'Offer a draw', 'draw', '½'],
+      ['Resign', 'Resign the game', 'resign', '⚑', 'danger'],
+      ['New game', 'Start a new game', 'newGame', '＋', 'primary'],
     ],
     (action) => actions[action]?.(),
   );
-
-  // ------------------------------------------------ resign, draw, transfer
-
-  async function confirmResign() {
-    if (session.state.isFinished) return;
-    const answer = await showDialog({
-      title: 'Resign?',
-      subtitle: 'The game is recorded as a loss.',
-      actions: [
-        { label: 'Keep playing', value: null, autofocus: true },
-        { label: 'Resign', value: 'resign', variant: 'danger' },
-      ],
-    });
-    // Not onGameOver(...) — adjudicate emits `gameover`, which already runs it.
-    if (answer === 'resign') session.resign();
-  }
-
-  async function offerDraw() {
-    if (session.state.isFinished) return;
-    if (session.mode !== 'engine') {
-      const answer = await showDialog({
-        title: 'Offer a draw?',
-        subtitle: 'Both players must agree.',
-        actions: [
-          { label: 'Cancel', value: null },
-          { label: 'Agree a draw', value: 'draw', variant: 'primary', autofocus: true },
-        ],
-      });
-      if (answer === 'draw') session.agreeDraw();
-      return;
-    }
-    // Against the engine, a draw offer is answered by the position rather than
-    // by negotiation: it accepts only when it is not better off playing on.
-    const evaluation = session.state.node.evaluation;
-    const enginePov = evaluation ? (session.playerColor === 'w' ? -1 : 1) * evaluation.value : 0;
-    const accepted = evaluation ? enginePov < 40 : false;
-    if (accepted) {
-      toaster.show('Draw accepted.');
-      session.agreeDraw();
-    } else {
-      toaster.show('Draw declined — play on.');
-    }
-  }
-
-  async function exportGame() {
-    const pgn = session.state.pgn();
-    const opening = session.status().opening?.name;
-    const answer = await showDialog({
-      title: 'Export',
-      subtitle: 'PGN keeps your variations, comments and evaluations.',
-      body: el('textarea.select', {
-        readonly: true,
-        rows: 8,
-        value: pgn,
-        style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', resize: 'vertical' },
-      }),
-      actions: [
-        { label: 'Close', value: null },
-        { label: 'Download', value: 'download' },
-        { label: 'Copy PGN', value: 'copy', variant: 'primary', autofocus: true },
-      ],
-    });
-    if (answer === 'copy') {
-      toaster.show((await copyText(pgn)) ? 'PGN copied.' : 'Could not reach the clipboard.');
-    } else if (answer === 'download') {
-      downloadText(suggestFilename(opening), pgn);
-    }
-  }
-
-  async function shareGame() {
-    const url = session.state.ply
-      ? buildShareUrl({ pgn: session.state.pgn() })
-      : buildShareUrl({ fen: session.state.fen });
-    const answer = await showDialog({
-      title: 'Share',
-      subtitle: 'The whole game travels in the link. Nothing is uploaded.',
-      body: el('input.select', {
-        readonly: true,
-        value: url,
-        style: { fontSize: 'var(--text-xs)' },
-      }),
-      actions: [
-        { label: 'Close', value: null },
-        { label: 'Copy link', value: 'copy', variant: 'primary', autofocus: true },
-      ],
-    });
-    if (answer === 'copy') {
-      toaster.show((await copyText(url)) ? 'Link copied.' : 'Could not reach the clipboard.');
-    }
-  }
-
-  /** The library of finished games, newest first. */
-  async function showLibrary() {
-    const games = store.loadLibrary();
-    if (!games.length) {
-      toaster.show('No finished games saved yet.');
-      return;
-    }
-
-    const list = el('div', {
-      style: { display: 'grid', gap: 'var(--space-1)', maxHeight: '22rem', overflowY: 'auto' },
-    });
-    let chosen = null;
-    for (const game of games) {
-      const when = new Date(game.savedAt).toLocaleDateString();
-      list.append(
-        el(
-          'button.button',
-          {
-            type: 'button',
-            style: { justifyContent: 'space-between', textAlign: 'left', width: '100%' },
-            on: {
-              click: (event) => {
-                chosen = game;
-                event.target.closest('dialog').close();
-              },
-            },
-          },
-          [
-            el('span', { text: game.opening ?? 'Unnamed opening' }),
-            el('span', {
-              text: `${game.result}  ·  ${when}`,
-              style: { color: 'var(--text-3)', fontSize: 'var(--text-xs)' },
-            }),
-          ],
-        ),
-      );
-    }
-
-    const finished = new AbortController();
-    const answer = showDialog({
-      title: 'Saved games',
-      subtitle: `${games.length} finished ${games.length === 1 ? 'game' : 'games'}, newest first.`,
-      body: list,
-      actions: [{ label: 'Close', value: null }],
-      closeSignal: finished.signal,
-    });
-    // A click inside the list closes the dialog directly, which resolves the
-    // promise; the controller is only for the caller-driven path.
-    list.addEventListener('click', () => finished.abort(), { once: true });
-    await answer;
-
-    if (chosen?.pgn) {
-      const loaded = await applyImport(chosen.pgn);
-      if (loaded) session.state.toEnd();
-      syncBoard({ animate: false });
-    }
-  }
-
-  async function importGame() {
-    const input = el('textarea.select', {
-      rows: 7,
-      placeholder: 'Paste a PGN game, or a FEN position…',
-      style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', resize: 'vertical' },
-    });
-    const answer = await showDialog({
-      title: 'Import',
-      subtitle: 'A PGN game or a single FEN position.',
-      body: input,
-      actions: [
-        { label: 'Cancel', value: null },
-        { label: 'Load', value: 'load', variant: 'primary' },
-      ],
-    });
-    if (answer !== 'load') return;
-    const applied = await applyImport(input.value.trim());
-    if (!applied) toaster.error('That is not a PGN game or a FEN position.');
-  }
-
-  /** Loads pasted or shared text, whichever kind it turns out to be. */
-  async function applyImport(text) {
-    if (!text) return false;
-    await session.cancelThinking();
-    try {
-      if (text.includes('[') || /\d+\s*\./.test(text)) {
-        session.loadPgn(text);
-      } else {
-        session.loadState({
-          version: 1,
-          startFen: text,
-          tree: { version: 1, startFen: text, headers: {}, children: [] },
-        });
-      }
-    } catch {
-      return false;
-    }
-    session.setMode('analysis');
-    board.orientation('white');
-    evalBar.setOrientation('white');
-    syncBoard({ animate: false });
-    toaster.success('Loaded. You are in analysis mode — play either side.');
-    return true;
-  }
 
   // ------------------------------------------------------------- keyboard
   const keyboard = new KeyboardControl({
@@ -706,6 +545,15 @@ export async function bootstrap(root) {
     onAction: (action) => actions[action]?.(),
     onCursor: (square) => {
       board.setHighlights({ ...highlightState(), hover: square });
+      if (!square) return;
+      // Silent, the cursor was unusable: there was no way to know it had
+      // reached e5 rather than e1 before committing to a move.
+      const piece = session.state.position()[square];
+      announce(
+        piece
+          ? `${square}, ${piece[0] === 'w' ? 'white' : 'black'} ${PIECE_NAMES[piece[1].toLowerCase()]}`
+          : `${square}, empty`,
+      );
     },
     onSquare: (square) => {
       if (selected && selected !== square) {
@@ -716,12 +564,11 @@ export async function bootstrap(root) {
       board.setHighlights(highlightState());
       announce(selected ? `Selected ${square}` : `${square} is empty`);
     },
-    onTyped: (text) => {
-      // `play` is async, but it applies the move before its first await, so the
-      // ply is already updated when this returns — which is what lets the
-      // keyboard layer know whether to clear the buffer.
+    onTyped: async (text) => {
+      // Awaited: play() can have to cancel a hint before it applies anything,
+      // so reading the ply synchronously called a move that WAS played illegal.
       const before = session.state.ply;
-      session.play(text);
+      await session.play(text);
       const accepted = session.state.ply !== before;
       if (!accepted) {
         sound.play('illegal');
@@ -734,282 +581,13 @@ export async function bootstrap(root) {
   });
 
   // -------------------------------------------------------------- controls
-  rail.bind(actions, { onNewGame: () => showNewGameDialog(), onSettings: () => showSettings() });
+  rail.bind(actions, {
+    onNewGame: () => dialogs.showNewGameDialog(),
+    onSettings: () => dialogs.showSettings(),
+  });
 
   function persist() {
     store.saveCurrentGame(session.toJSON());
-  }
-
-  async function showNewGameDialog() {
-    const modeSelect = el(
-      'select.select',
-      {},
-      options(
-        [
-          ['engine', 'Play the computer'],
-          ['hotseat', 'Two players, one device'],
-          ['analysis', 'Analysis board'],
-        ],
-        session.mode,
-      ),
-    );
-    const colorSelect = el(
-      'select.select',
-      {},
-      options(
-        [
-          ['w', 'Play as White'],
-          ['b', 'Play as Black'],
-          ['random', 'Random side'],
-        ],
-        settings.playerColor,
-      ),
-    );
-    const levelSelect = el(
-      'select.select',
-      {},
-      options(
-        DIFFICULTY_LEVELS.map((level) => [
-          String(level.level),
-          `${level.level}. ${level.name}${level.approxElo ? ` · ~${level.approxElo}` : ''}`,
-        ]),
-        String(settings.difficulty),
-      ),
-    );
-    const timeSelect = el(
-      'select.select',
-      {},
-      options(
-        TIME_CONTROLS.map((control) => [control.id, `${control.label} · ${control.category}`]),
-        settings.timeControl,
-      ),
-    );
-    const engineSelect = el(
-      'select.select',
-      {},
-      options(
-        Object.values(ENGINE_PROFILES).map((profile) => [
-          profile.id,
-          `${profile.name} · ${profile.strength}`,
-        ]),
-        settings.engine,
-      ),
-    );
-
-    const answer = await showDialog({
-      title: 'New game',
-      body: [
-        field('Mode', modeSelect),
-        field('Side', colorSelect),
-        field('Difficulty', levelSelect),
-        field('Time control', timeSelect),
-        field('Engine', engineSelect),
-      ],
-      actions: [
-        { label: 'Cancel', value: null },
-        { label: 'Start', value: 'start', variant: 'primary', autofocus: true },
-      ],
-    });
-    if (answer !== 'start') return;
-
-    settings.difficulty = Number(levelSelect.value);
-    settings.timeControl = timeSelect.value;
-    settings.playerColor = colorSelect.value;
-    store.saveSettings(settings);
-
-    session.setMode(modeSelect.value);
-    if (engineSelect.value !== settings.engine) {
-      await session.useEngine(engineSelect.value);
-      settings.engine = engineSelect.value;
-      enginePanel.setEngine(
-        ENGINE_PROFILES[engineSelect.value].name,
-        ENGINE_PROFILES[engineSelect.value].strength,
-      );
-    }
-    session.setDifficulty(settings.difficulty);
-    session.setTimeControl(settings.timeControl);
-    await startNewGame({ color: colorSelect.value });
-  }
-
-  async function showSettings() {
-    const themeSelect = el(
-      'select.select',
-      {},
-      options(
-        Object.values(THEMES).map((theme) => [theme.id, theme.name]),
-        settings.theme,
-      ),
-    );
-    // The two renderers have different piece sets — 3D models versus sprite
-    // sheets — so the picker follows whichever board is mounted.
-    const in3d = settings.dimensions === 3;
-    const pieceSelect = el(
-      'select.select',
-      {},
-      options(
-        in3d
-          ? Object.values(PIECE_SETS).map((set) => [set.id, set.name])
-          : Object.values(PIECE_IMAGE_SETS).map((set) => [set.id, set.name]),
-        in3d ? settings.pieceSet : settings.pieceSet2d,
-      ),
-    );
-    const dimensionSelect = el(
-      'select.select',
-      {},
-      options(
-        [
-          ['3', '3D board'],
-          ['2', '2D board'],
-        ],
-        String(settings.dimensions),
-      ),
-    );
-    const cameraSelect = el(
-      'select.select',
-      {},
-      options(
-        Object.values(CAMERA_MODES).map((mode) => [mode.id, mode.name]),
-        settings.cameraMode,
-      ),
-    );
-    const uiThemeSelect = el(
-      'select.select',
-      {},
-      options(
-        [
-          ['system', 'Match the system'],
-          ['dark', 'Dark'],
-          ['light', 'Light'],
-        ],
-        settings.uiTheme,
-      ),
-    );
-
-    const toggle = (label, checked, onChange) => {
-      const input = el('input', {
-        type: 'checkbox',
-        checked,
-        on: { change: (e) => onChange(e.target.checked) },
-      });
-      return el('label.switch', {}, [label, input]);
-    };
-    const volume = el('input.range', {
-      type: 'range',
-      min: '0',
-      max: '1',
-      step: '0.05',
-      value: String(settings.soundVolume),
-      on: {
-        input: (e) => {
-          settings.soundVolume = Number(e.target.value);
-          sound.setVolume(settings.soundVolume);
-        },
-      },
-    });
-
-    themeSelect.addEventListener('change', () => {
-      settings.theme = themeSelect.value;
-      applyBoardTheme();
-    });
-    pieceSelect.addEventListener('change', () => {
-      if (settings.dimensions === 3) settings.pieceSet = pieceSelect.value;
-      else settings.pieceSet2d = pieceSelect.value;
-      board.setPieceSet(pieceSelect.value);
-    });
-    dimensionSelect.addEventListener('change', () => {
-      setDimensions(Number(dimensionSelect.value));
-    });
-    cameraSelect.addEventListener('change', () => {
-      settings.cameraMode = cameraSelect.value;
-      board.setCameraMode(settings.cameraMode);
-    });
-    uiThemeSelect.addEventListener('change', () => {
-      settings.uiTheme = uiThemeSelect.value;
-      applyInterfaceTheme(settings);
-    });
-
-    function applyBoardTheme() {
-      board.setTheme(themeFor());
-    }
-
-    await showDialog({
-      title: 'Settings',
-      body: [
-        field('Board', dimensionSelect),
-        field('Board theme', themeSelect),
-        field('Piece set', pieceSelect),
-        settings.dimensions === 3 ? field('Camera', cameraSelect) : null,
-        field('Interface', uiThemeSelect),
-        toggle('Sound', settings.soundEnabled, (on) => {
-          settings.soundEnabled = on;
-          sound.setEnabled(on);
-        }),
-        el('div.field', {}, [el('span.field__label', { text: 'Volume' }), volume]),
-        toggle('Show legal moves', settings.showLegalMoves, (on) => {
-          settings.showLegalMoves = on;
-          board.setHighlights(highlightState());
-        }),
-        toggle('Board coordinates', settings.showCoordinates, (on) => {
-          settings.showCoordinates = on;
-          if (board.board.notation) board.board.notation.visible = on;
-        }),
-        toggle('High-contrast highlights', settings.highContrast, (on) => {
-          settings.highContrast = on;
-          applyBoardTheme();
-        }),
-        toggle('Reduce motion', settings.reducedMotion, (on) => {
-          settings.reducedMotion = on;
-          board.setReducedMotion(on);
-        }),
-        toggle('Vibration on mobile', settings.haptics, (on) => {
-          settings.haptics = on;
-        }),
-        toggle('Warn about pieces I can lose', settings.coachHints, (on) => {
-          settings.coachHints = on;
-          board.setHighlights(highlightState());
-        }),
-        toggle('Live evaluation bar', settings.liveAnalysis, async (on) => {
-          settings.liveAnalysis = on;
-          if (on) {
-            await analyser.start().catch(() => {});
-            analyser.setEnabled(true);
-            analyser.analyse(session.state.fen, { turn: session.state.turn });
-          } else {
-            analyser.setEnabled(false);
-            liveEvaluation = null;
-            renderStatus();
-          }
-        }),
-      ],
-      actions: [{ label: 'Done', value: 'done', variant: 'primary', autofocus: true }],
-    });
-    store.saveSettings(settings);
-  }
-
-  function showShortcutHelp() {
-    return showDialog({
-      title: 'Keyboard',
-      subtitle: 'The whole game is playable without a pointer.',
-      body: el(
-        'div',
-        {
-          style: {
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr',
-            gap: 'var(--space-2) var(--space-4)',
-            fontSize: 'var(--text-sm)',
-          },
-        },
-        SHORTCUTS.flatMap(([keys, description]) => [
-          el('kbd', {
-            text: keys,
-            style: { fontFamily: 'var(--font-mono)', color: 'var(--text-1)' },
-          }),
-          el('span', { text: description, style: { color: 'var(--text-2)' } }),
-        ]),
-      ),
-      actions: [{ label: 'Close', value: 'close', variant: 'primary', autofocus: true }],
-    });
   }
 
   analyser.on('evaluation', (result) => {
@@ -1046,7 +624,7 @@ export async function bootstrap(root) {
   const shared = readShareTarget();
   let loadedFromLink = false;
   if (shared) {
-    loadedFromLink = await applyImport(shared.kind === 'fen' ? shared.fen : shared.pgn);
+    loadedFromLink = await dialogs.applyImport(shared.kind === 'fen' ? shared.fen : shared.pgn);
     clearShareTarget();
     if (!loadedFromLink) toaster.error('That link does not contain a readable game.');
   }
@@ -1058,8 +636,13 @@ export async function bootstrap(root) {
         mode: saved.mode ?? 'engine',
         playerColor: saved.playerColor ?? 'w',
       });
-      board.orientation(session.playerColor === 'w' ? 'white' : 'black');
-      evalBar.setOrientation(session.playerColor === 'w' ? 'white' : 'black');
+      session.restoreClock(saved.clock);
+      adoptGame({
+        facing: session.playerColor === 'w' ? 'white' : 'black',
+        // A game restored on the computer's turn had nothing to prompt it, so
+        // the board simply sat there.
+        prompt: true,
+      });
       toaster.show('Picked up where you left off.');
     } catch {
       // A blob from an older version, or a tree that no longer parses. Losing
@@ -1112,10 +695,6 @@ export async function bootstrap(root) {
 }
 
 // ------------------------------------------------------------------ helpers
-
-function field(label, control) {
-  return el('div.field', {}, [el('span.field__label', { text: label }), control]);
-}
 
 function describeResult(result) {
   if (!result.over) return 'Game in progress';
@@ -1184,23 +763,36 @@ function buildTopBar() {
 
   return {
     element,
-    /** @param {Array<[label: string, title: string, action: string, variant?: string]>} spec */
+    /**
+     * @param {Array<[label: string, title: string, action: string, icon: string,
+     *               variant?: string]>} spec
+     *
+     * Each button carries both an icon and a label; narrow screens show only
+     * the icon, because six labelled buttons do not fit across a phone and the
+     * row simply ran off the edge.
+     */
     setActions(spec, onAction) {
       actions.replaceChildren(
-        ...spec.map(([label, title, action, variant]) =>
-          el('button.button', {
-            type: 'button',
-            class:
-              variant === 'primary'
-                ? 'button--primary'
-                : variant === 'danger'
-                  ? 'button--danger'
-                  : 'button--quiet',
-            text: label,
-            title,
-            'aria-label': title,
-            on: { click: () => onAction(action) },
-          }),
+        ...spec.map(([label, title, action, icon, variant]) =>
+          el(
+            'button.button',
+            {
+              type: 'button',
+              class:
+                variant === 'primary'
+                  ? 'button--primary'
+                  : variant === 'danger'
+                    ? 'button--danger'
+                    : 'button--quiet',
+              title,
+              'aria-label': title,
+              on: { click: () => onAction(action) },
+            },
+            [
+              el('span.button__icon', { text: icon, 'aria-hidden': 'true' }),
+              el('span.button__label', { text: label }),
+            ],
+          ),
         ),
       );
     },
