@@ -1,13 +1,16 @@
 /**
  * The computer opponent.
  *
- * None of the engines we ship declare `UCI_Elo` or `Skill Level`, so difficulty
- * cannot simply be handed to the engine. Turning the search down alone doesn't
- * work either: a shallow search still never hangs a queen, so "easy" plays
- * inhumanly solid chess and then suddenly wins. Instead each level combines a
- * search budget with a chance of choosing a deliberately worse move, picked by
- * static evaluation from a band of plausible alternatives — the mistakes look
- * like mistakes a person would make.
+ * Difficulty cannot be handed to the engine and forgotten. Stockfish 5 does
+ * declare `Skill Level` (0-20), and that is used where available. Lozza and
+ * p4wn declare nothing at all, and no bundled engine has `UCI_Elo` — that
+ * arrived in Stockfish 11.
+ *
+ * Turning the search down is not enough on its own either: a shallow search
+ * still never hangs a queen, so "easy" plays inhumanly solid chess right up
+ * until it wins. So each level pairs a search budget with a chance of choosing
+ * a deliberately worse move, drawn by static evaluation from a band of
+ * plausible alternatives — mistakes that look like mistakes a person makes.
  */
 import { scoreMoves } from '../core/staticEval.js';
 import { pickBookMove } from '../core/openings.js';
@@ -52,15 +55,19 @@ export class Opponent {
   setLevel(level) {
     this.level = level;
     this.settings = difficultyByLevel(level);
-    // If an engine *does* expose strength limiting, prefer it over our own
-    // weakening — a real Elo cap plays better-shaped weak chess than we can fake.
+
+    // Prefer the engine's own weakening where it exists: an engine playing
+    // badly on purpose still plays coherently badly, which is more convincing
+    // than a good move swapped for a worse one from outside.
     const { limitStrength, skillLevel } = this.engine.capabilities;
     if (limitStrength && this.settings.approxElo) {
       this.engine.setOption('UCI_LimitStrength', 'true');
       this.engine.setOption('UCI_Elo', this.settings.approxElo);
       this.usesNativeStrength = true;
     } else if (skillLevel) {
-      this.engine.setOption('Skill Level', Math.round((level - 1) * (20 / 9)));
+      // Stockfish 5's Skill Level runs 0-20. Level 10 is full strength, so map
+      // 1-9 across 0-20 and leave 10 to mean "don't hold back".
+      this.engine.setOption('Skill Level', level >= 10 ? 20 : Math.round((level - 1) * (18 / 8)));
       this.usesNativeStrength = true;
     } else {
       this.usesNativeStrength = false;
@@ -104,7 +111,21 @@ export class Opponent {
     const limits = { movetime, onInfo, signal };
     if (settings.depth && !this.usesNativeStrength) limits.depth = settings.depth;
 
-    const result = await this.engine.search(fen, limits);
+    let result;
+    try {
+      result = await this.engine.search(fen, limits);
+    } catch (error) {
+      // A cancelled or timed-out search is not a crash; the caller decides.
+      return {
+        move: null,
+        san: null,
+        source: 'aborted',
+        error,
+        evaluation: null,
+        info: null,
+        elapsedMs: performance.now() - startedAt,
+      };
+    }
     const best = parseUciMove(result.bestmove);
     if (!best) {
       return { move: null, san: null, source: 'none', evaluation: null, info: result.info, elapsedMs: performance.now() - startedAt };

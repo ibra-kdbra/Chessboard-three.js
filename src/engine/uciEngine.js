@@ -1,12 +1,21 @@
 /**
  * A promise-shaped wrapper around a UCI engine running in a Web Worker.
  *
- * The engines we ship differ in what they understand — Lozza declares no
- * options at all, Stockfish declares many — so the adapter probes at handshake
- * time and exposes what it found. Callers ask for a search and await a result;
- * they never poke at the worker protocol themselves.
+ * Two things shape this design, both measured rather than assumed:
+ *
+ * All three bundled engines run their search synchronously on the worker's own
+ * event loop, so no message can reach them while they are thinking. `stop` is
+ * therefore undeliverable and cancellation means terminating the worker. The
+ * adapter does exactly that, and starts a fresh one, rather than pretending to
+ * send a command that would sit unread in the queue.
+ *
+ * And each engine deviates from UCI in its own way — SAN principal variations,
+ * off-by-one mate scores, `info` arriving after `bestmove`, centipawns on a
+ * private scale. Those quirks are declared in engineProfiles.js and normalised
+ * here, so callers see one consistent protocol.
  */
 import { Emitter } from '../core/emitter.js';
+import { getEngineProfile, budgetFor } from './engineProfiles.js';
 
 /** Parses one `info ...` line into a normalised object. */
 export function parseInfo(line) {
@@ -92,12 +101,14 @@ const HANDSHAKE_TIMEOUT_MS = 15_000;
  */
 export class UciEngine extends Emitter {
   /**
-   * @param {{ url: string, name?: string, workerFactory?: (url: string) => Worker }} options
+   * @param {{ profile?: string|object, url?: string, name?: string,
+   *           workerFactory?: (url: string) => Worker }} options
    */
-  constructor({ url, name = url, workerFactory }) {
+  constructor({ profile = 'lozza', url, name, workerFactory } = {}) {
     super();
-    this.url = url;
-    this.name = name;
+    this.profile = typeof profile === 'string' ? getEngineProfile(profile) : profile;
+    this.url = url ?? this.profile.url;
+    this.name = name ?? this.profile.name;
     this.id = null;
     this.author = null;
     /** Declared UCI options, keyed by name. */
@@ -108,6 +119,7 @@ export class UciEngine extends Emitter {
 
   #workerFactory;
   #worker = null;
+  #newGameSent = false;
   /** Resolvers waiting on a specific token (`uciok`, `readyok`). */
   #waiters = [];
   /** In-flight search, if any. */
@@ -117,15 +129,25 @@ export class UciEngine extends Emitter {
     return this.#search !== null;
   }
 
-  /** What this particular engine can actually do — probed, not assumed. */
+  /**
+   * What this engine can actually do. Declared options are probed at handshake,
+   * but a declaration is not a promise — Stockfish 5 advertises `Threads` and
+   * `Ponder` and can honour neither, so those are gated on what was measured.
+   */
   get capabilities() {
     return {
       multiPv: this.options.has('MultiPV'),
-      limitStrength: this.options.has('UCI_LimitStrength') || this.options.has('UCI_Elo'),
+      // UCI_Elo arrived in Stockfish 11; nothing bundled here has it.
+      limitStrength: this.options.has('UCI_LimitStrength') && this.options.has('UCI_Elo'),
       skillLevel: this.options.has('Skill Level'),
       hash: this.options.has('Hash'),
-      threads: this.options.has('Threads'),
-      ponder: this.options.has('Ponder'),
+      // The build has no pthreads; the option is inert, so never offer it.
+      threads: false,
+      // Pondering needs `stop`/`ponderhit` to reach a running search.
+      ponder: false,
+      // Cancellation is possible, but only by discarding the worker.
+      stop: false,
+      cancelByTerminate: true,
     };
   }
 
@@ -144,6 +166,12 @@ export class UciEngine extends Emitter {
     this.#send('uci');
     await this.#await('uciok', HANDSHAKE_TIMEOUT_MS);
     await this.isReady();
+    // p4wn's internal state does not exist until ucinewgame has run; a
+    // `position` before that throws inside the worker with no error reply.
+    if (this.profile.newGameBeforePosition) {
+      this.#send('ucinewgame');
+      this.#newGameSent = true;
+    }
     this.state = 'ready';
     this.emit('ready', this);
     return this;
@@ -163,7 +191,7 @@ export class UciEngine extends Emitter {
       else if (trimmed.startsWith('id author')) this.author = trimmed.slice(10).trim();
       else if (trimmed.startsWith('option name')) this.#recordOption(trimmed);
 
-      const info = parseInfo(trimmed);
+      const info = this.#normaliseInfo(parseInfo(trimmed));
       if (info) {
         this.#search?.onInfo?.(info);
         if (info.pv || info.score) this.#search?.collect(info);
@@ -177,7 +205,47 @@ export class UciEngine extends Emitter {
     }
   }
 
+  /**
+   * Folds this engine's private conventions into standard UCI values, so
+   * nothing downstream has to know which engine produced a line.
+   */
+  #normaliseInfo(info) {
+    if (!info) return info;
+    const profile = this.profile;
+
+    if (info.score) {
+      const score = { ...info.score };
+      if (score.type === 'cp' && profile.cpScale !== 1) {
+        score.value = Math.round(score.value * profile.cpScale);
+      }
+      if (score.type === 'cp' && profile.cpParityFlips && info.depth % 2 === 1) {
+        // The sign alternates with search-depth parity, so odd depths report
+        // the score from the opponent's point of view.
+        score.value = -score.value;
+      }
+      if (score.type === 'mate' && profile.mateOffset) {
+        // Reports mate-in-1 as `mate 0`, which in real UCI means "already mated".
+        score.value += Math.sign(score.value || 1) * profile.mateOffset;
+      }
+      info.score = score;
+    }
+
+    if (info.pv && profile.sanPv) {
+      // Lozza emits SAN in a browser worker. Keep the tokens, but say so, so a
+      // caller does not try to read them as coordinates.
+      info.pvFormat = 'san';
+      // A trailing '#' is emitted as its own bogus token.
+      info.pv = info.pv.filter((token) => token !== '#' && token !== '+');
+    } else if (info.pv) {
+      info.pvFormat = 'uci';
+    }
+    return info;
+  }
+
   #recordOption(line) {
+    // Lozza answers `uci` with the bare word `option` — no name, no type. A
+    // loose parser records that as a garbage entry and every later
+    // capability check becomes unreliable.
     const match = /^option name (.+?) type (\w+)(.*)$/.exec(line);
     if (!match) return;
     const [, name, type, rest] = match;
@@ -240,6 +308,7 @@ export class UciEngine extends Emitter {
 
   async newGame() {
     this.#send('ucinewgame');
+    this.#newGameSent = true;
     await this.isReady();
     return this;
   }
@@ -254,43 +323,62 @@ export class UciEngine extends Emitter {
    * @returns {Promise<{bestmove: string|null, ponder: string|null, info: object|null, lines: object[]}>}
    */
   async search(fen, limits = {}) {
-    if (this.#search) await this.stop();
+    if (this.#search) await this.cancel();
+    if (!this.#worker) await this.start();
 
     if (limits.multiPv && this.capabilities.multiPv) {
       this.setOption('MultiPV', limits.multiPv);
     }
+    if (this.profile.newGameBeforePosition && !this.#newGameSent) {
+      this.#send('ucinewgame');
+      this.#newGameSent = true;
+    }
 
     this.#send(`position fen ${fen}`);
 
+    // Every engine here honours exactly one budget and silently drops the rest,
+    // and a `go` with no limit at all searches forever in two of the three.
+    const budget = budgetFor(this.profile, limits);
     const parts = ['go'];
-    for (const key of ['depth', 'nodes', 'movetime', 'wtime', 'btime', 'winc', 'binc', 'movestogo']) {
-      if (limits[key] !== undefined && limits[key] !== null) parts.push(key, String(limits[key]));
-    }
-    if (parts.length === 1) parts.push('movetime', '1000');
+    for (const [key, value] of Object.entries(budget)) parts.push(key, String(value));
+    // p4wn's regex only keeps `depth` when it is the final token, so nothing
+    // may be appended after the budget.
 
     return new Promise((resolve, reject) => {
       /** Best line seen per multipv slot; engines only re-send what changed. */
       const lines = new Map();
-      this.#search = {
+      const search = {
         resolve,
         reject,
         onInfo: limits.onInfo,
         lastInfo: null,
+        watchdog: null,
         collect(info) {
           if (info.score) this.lastInfo = { ...this.lastInfo, ...info };
           if (info.pv) lines.set(info.multipv ?? 1, { ...info });
         },
         lines,
       };
+      this.#search = search;
 
       if (limits.signal) {
         if (limits.signal.aborted) {
           this.#search = null;
-          reject(new DOMException('search aborted', 'AbortError'));
+          reject(new Error('search aborted'));
           return;
         }
-        limits.signal.addEventListener('abort', () => this.stop(), { once: true });
+        limits.signal.addEventListener('abort', () => this.cancel(), { once: true });
       }
+
+      // A search that never answers would hang the game, and no engine here can
+      // be interrupted politely, so back the budget with a hard deadline.
+      const ceiling = (budget.movetime ?? 4000) * 4 + 8000;
+      search.watchdog = setTimeout(() => {
+        if (this.#search === search) {
+          this.emit('timeout', { fen, budget });
+          this.cancel().then(() => reject(new Error(`${this.name} did not answer in time`)));
+        }
+      }, ceiling);
 
       this.#send(parts.join(' '));
     });
@@ -299,34 +387,57 @@ export class UciEngine extends Emitter {
   #finishSearch(best) {
     if (!this.#search) return;
     const search = this.#search;
-    this.#search = null;
-    search.resolve({
-      bestmove: best.bestmove,
-      ponder: best.ponder,
-      info: search.lastInfo,
-      lines: [...search.lines.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([multipv, info]) => ({ ...info, multipv })),
-    });
+    const settle = () => {
+      if (this.#search !== search) return;
+      this.#search = null;
+      clearTimeout(search.watchdog);
+      search.resolve({
+        bestmove: best.bestmove,
+        ponder: best.ponder,
+        info: search.lastInfo,
+        lines: [...search.lines.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([multipv, info]) => ({ ...info, multipv })),
+      });
+    };
+
+    if (this.profile.infoAfterBestMove) {
+      // p4wn posts `bestmove` first and its only `info` line straight after.
+      // Settling immediately would throw away every evaluation it ever gives.
+      setTimeout(settle, 0);
+    } else {
+      settle();
+    }
   }
 
-  /** Asks the engine to stop; resolves once the pending search has settled. */
-  async stop() {
+  /**
+   * Abandons the running search.
+   *
+   * None of the bundled engines can receive a message while searching, so this
+   * discards the worker and starts a new one. That is genuinely the only way to
+   * interrupt them; sending `stop` would simply queue a message behind a search
+   * that has already finished by the time it is read.
+   */
+  async cancel() {
     if (!this.#search) return null;
-    const pending = new Promise((resolve) => {
-      const search = this.#search;
-      const originalResolve = search.resolve;
-      search.resolve = (value) => {
-        originalResolve(value);
-        resolve(value);
-      };
-    });
-    this.#send('stop');
-    // Some engines ignore `stop` mid-iteration; don't hang the UI on them.
-    return Promise.race([
-      pending,
-      new Promise((resolve) => setTimeout(() => resolve(null), 3_000)),
-    ]);
+    const search = this.#search;
+    this.#search = null;
+    clearTimeout(search.watchdog);
+
+    this.#worker?.terminate();
+    this.#worker = null;
+    this.#newGameSent = false;
+    this.options.clear();
+    search.reject(new Error('search cancelled'));
+
+    this.emit('cancelled', {});
+    await this.start();
+    return null;
+  }
+
+  /** Kept for callers that expect the UCI verb; cancellation is the same thing. */
+  stop() {
+    return this.cancel();
   }
 
   dispose() {

@@ -1,7 +1,7 @@
 {
   "name": "chessboard3",
   "version": "2.0.0",
-  "description": "A 3D/2D chess game and board library built on three.js — no bundler required.",
+  "description": "A 3D/2D chess game and board library built on three.js \u2014 no bundler required.",
   "type": "module",
   "license": "MIT",
   "repository": {
