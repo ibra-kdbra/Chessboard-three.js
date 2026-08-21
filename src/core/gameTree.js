@@ -19,7 +19,7 @@ export function _resetIds() {
 }
 
 export class GameNode {
-  constructor({ move = null, fen, parent = null, ply = 0 }) {
+  constructor({ move = null, fen, parent = null, ply = 0, origin = null }) {
     this.id = freshId();
     /** @type {GameNode | null} */
     this.parent = parent;
@@ -31,6 +31,13 @@ export class GameNode {
     this.fen = fen;
     /** Half-moves from the root. */
     this.ply = ply;
+    /**
+     * Where the game started: `{ turn, moveNumber }` from the root FEN.
+     *
+     * Ply parity alone is not enough — a game loaded from a position with Black
+     * to move on move 12 would otherwise be numbered as if White had opened it.
+     */
+    this.origin = origin ?? parent?.origin ?? { turn: 'w', moveNumber: 1 };
 
     // Annotations.
     this.comment = '';
@@ -64,12 +71,17 @@ export class GameNode {
 
   /** 1-based move number, as printed in notation. */
   get moveNumber() {
-    return Math.floor((this.ply + 1) / 2);
+    // Count from the root's own move number, and from whoever was to move
+    // there — a game that starts mid-position does not start at 1. w.
+    const offset = this.origin.turn === 'w' ? 0 : 1;
+    return this.origin.moveNumber + Math.floor((this.ply - 1 + offset) / 2);
   }
 
   /** Colour that played `move`. */
   get color() {
-    return this.ply % 2 === 1 ? 'w' : 'b';
+    const first = this.origin.turn;
+    const even = this.ply % 2 === 1;
+    return even ? first : first === 'w' ? 'b' : 'w';
   }
 
   /** Root-first path of nodes ending at this one, root included. */
@@ -94,7 +106,13 @@ export class GameTree {
    */
   constructor(startFen, headers = {}) {
     this.startFen = startFen;
-    this.root = new GameNode({ fen: startFen, ply: 0 });
+    const [, turn = 'w', , , , fullmove = '1'] = String(startFen).trim().split(/\s+/);
+    const origin = {
+      turn: turn === 'b' ? 'b' : 'w',
+      moveNumber: Number.parseInt(fullmove, 10) || 1,
+    };
+    this.origin = origin;
+    this.root = new GameNode({ fen: startFen, ply: 0, origin });
     this.headers = { ...headers };
     /** @type {GameNode} the node whose position is currently shown. */
     this.current = this.root;
@@ -112,7 +130,7 @@ export class GameTree {
       this.current = existing;
       return existing;
     }
-    const node = new GameNode({ move, fen, parent, ply: parent.ply + 1 });
+    const node = new GameNode({ move, fen, parent, ply: parent.ply + 1, origin: this.origin });
     parent.children.push(node);
     this.current = node;
     return node;
@@ -136,10 +154,17 @@ export class GameTree {
     node.parent.children = [node];
   }
 
-  /** Deletes everything after `node` on every branch. */
+  /**
+   * Deletes everything after `node` on every branch.
+   *
+   * If the cursor was standing on something that just became unreachable, it
+   * moves to `node`. The guard used to be the wrong way round, which left the
+   * cursor on a detached subtree — `size` and `currentLine()` then disagreed.
+   */
   truncateAfter(node) {
+    const strandedCursor = this.current !== node && this.current.path().includes(node);
     node.children = [];
-    if (this.current.path().includes(node) === false) this.current = node;
+    if (strandedCursor || !this.current.path().includes(this.root)) this.current = node;
   }
 
   /**
@@ -246,6 +271,7 @@ export class GameTree {
         fen: raw.f,
         parent,
         ply: parent.ply + 1,
+        origin: tree.origin,
       });
       node.comment = raw.c ?? '';
       node.nags = raw.n ?? [];

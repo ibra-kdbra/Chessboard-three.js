@@ -115,7 +115,7 @@ describe('UciEngine', () => {
     });
     const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
     await engine.start();
-    const result = await engine.search('8/8/8/8/8/8/8/K6k w - - 0 1', { movetime: 100 });
+    const result = await engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 100 });
 
     expect(result.bestmove).toBe('d1h5');
     expect(result.info.score).toEqual({ type: 'mate', value: 1 });
@@ -205,7 +205,7 @@ describe('UciEngine', () => {
     });
     await engine.start();
 
-    const pending = engine.search('8/8/8/8/8/8/8/K6k w - - 0 1', { movetime: 5000 });
+    const pending = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 5000 });
     const outcome = pending.then(() => 'resolved').catch((error) => error.message);
     await engine.cancel();
 
@@ -223,12 +223,175 @@ describe('UciEngine', () => {
       await vi.advanceTimersByTimeAsync(1);
       await started;
 
-      const search = engine.search('8/8/8/8/8/8/8/K6k w - - 0 1', { movetime: 100 });
+      const search = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 100 });
       const outcome = search.then(() => 'resolved').catch((error) => error.message);
       await vi.advanceTimersByTimeAsync(20_000);
       expect(await outcome).toMatch(/did not answer/);
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('UciEngine safety', () => {
+  const scripted = (script) =>
+    class {
+      constructor() {
+        this.onmessage = null;
+        this.sent = [];
+      }
+      postMessage(command) {
+        this.sent.push(command);
+        const replies = script[command.split(' ')[0]] ?? [];
+        queueMicrotask(() => {
+          for (const line of replies) this.onmessage?.({ data: line });
+        });
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    };
+
+  it('refuses to search a finished position on an engine that hangs on one', async () => {
+    const Worker = scripted({ uci: ['uciok'], isready: ['readyok'] });
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
+    await engine.start();
+    // Bare kings: Lozza never returns a bestmove from here, and floods the main
+    // thread with info lines while not returning it.
+    await expect(engine.search('8/8/8/8/8/8/8/K6k w - - 0 1', { movetime: 50 })).rejects.toThrow(
+      /finished position/,
+    );
+    engine.dispose();
+  });
+
+  it('replays options onto the worker that cancellation creates', async () => {
+    const workers = [];
+    const Worker = scripted({
+      uci: ['uciok', 'option name Skill Level type spin default 20 min 0 max 20'],
+      isready: ['readyok'],
+      position: [],
+      go: [],
+    });
+    const engine = new UciEngine({
+      profile: 'stockfish',
+      workerFactory: () => {
+        const worker = new Worker();
+        workers.push(worker);
+        return worker;
+      },
+    });
+    await engine.start();
+    engine.setOption('Skill Level', 5);
+
+    const pending = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 5000 });
+    pending.catch(() => {});
+    await engine.cancel();
+
+    // The fresh worker knows nothing until the options are replayed onto it.
+    const replayed = workers.at(-1).sent.filter((command) => command.startsWith('setoption'));
+    expect(replayed).toContain('setoption name Skill Level value 5');
+    engine.dispose();
+  });
+
+  it('is terminal once disposed', async () => {
+    const Worker = scripted({ uci: ['uciok'], isready: ['readyok'] });
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
+    await engine.start();
+    engine.dispose();
+
+    await expect(engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', {})).rejects.toThrow(
+      /disposed/,
+    );
+    await expect(engine.start()).rejects.toThrow(/disposed/);
+  });
+
+  it('resolves an ambiguous mate score from whether a move came back', async () => {
+    const mated = scripted({
+      uci: ['uciok'],
+      isready: ['readyok'],
+      position: [],
+      // Lozza's mate distance loses the sign; `(none)` says who is mated.
+      go: ['info depth 3 score mate 0 pv h1h2', 'bestmove (none)'],
+    });
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new mated() });
+    await engine.start();
+    const result = await engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 50 });
+    expect(result.info.score).toEqual({ type: 'mate', value: -1 });
+    engine.dispose();
+  });
+
+  it('keeps only the first MultiPV line as the position score', async () => {
+    const Worker = scripted({
+      uci: ['uciok', 'option name MultiPV type spin default 1 min 1 max 500'],
+      isready: ['readyok'],
+      position: [],
+      go: [
+        'info depth 8 multipv 1 score cp 340 pv e2e4',
+        'info depth 8 multipv 3 score cp -260 pv a2a3',
+        'bestmove e2e4',
+      ],
+    });
+    const engine = new UciEngine({ profile: 'stockfish', workerFactory: () => new Worker() });
+    await engine.start();
+    const result = await engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', {
+      movetime: 50,
+      multiPv: 3,
+    });
+    // Folding every line into one score reported the worst candidate as the
+    // evaluation of the position.
+    expect(result.info.score.value).toBe(340);
+    expect(result.lines).toHaveLength(2);
+    engine.dispose();
+  });
+});
+
+describe('UciEngine cancellation timing', () => {
+  const hangingWorker = () =>
+    class {
+      constructor() {
+        this.onmessage = null;
+        this.sent = [];
+      }
+      postMessage(command) {
+        this.sent.push(command);
+        const replies = { uci: ['uciok'], isready: ['readyok'] }[command.split(' ')[0]] ?? [];
+        queueMicrotask(() => {
+          for (const line of replies) this.onmessage?.({ data: line });
+        });
+      }
+      terminate() {
+        this.terminated = true;
+      }
+    };
+
+  it('a cancel issued immediately after search still cancels it', async () => {
+    const Worker = hangingWorker();
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
+    await engine.start();
+
+    // No await between the two: the search must claim its slot synchronously,
+    // or the cancel finds nothing in flight and the engine plays on regardless.
+    const pending = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 5000 });
+    const outcome = pending.then(() => 'resolved').catch((error) => error.message);
+    await engine.cancel();
+
+    expect(await outcome).toContain('cancelled');
+    engine.dispose();
+  });
+
+  it('a second search supersedes the first rather than orphaning it', async () => {
+    const Worker = hangingWorker();
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
+    await engine.start();
+
+    const first = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 5000 });
+    const firstOutcome = first.then(() => 'resolved').catch((error) => error.message);
+    const second = engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 b - - 0 1', { movetime: 5000 });
+    second.catch(() => {});
+
+    // The first must settle. Left pending it would keep its caller waiting for
+    // a reply that can never arrive.
+    expect(await firstOutcome).toMatch(/superseded|cancelled/);
+    engine.dispose();
   });
 });

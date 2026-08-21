@@ -158,11 +158,18 @@ export function writePgn(tree, options = {}) {
 const TOKEN_RE =
   /(\{[^}]*\})|(\[[^\]]*\])|(\()|(\))|(\$\d+)|(\d+\.(?:\.\.)?)|(1-0|0-1|1\/2-1\/2|\*)|([0OoA-Za-z][-A-Za-z0-9=+#!?]*)/g;
 
-function parseHeaders(text) {
+/**
+ * Reads the tag pairs at the top of a game.
+ *
+ * Scoped to the header block on purpose. Scanning the whole file lets a tag
+ * look-alike inside a brace comment — an annotator quoting a FEN, say —
+ * override the real headers and change the starting position.
+ */
+function parseHeaders(headerBlock) {
   const headers = {};
   const re = /\[\s*(\w+)\s*"((?:[^"\\]|\\.)*)"\s*\]/g;
   let match;
-  while ((match = re.exec(text)) !== null) {
+  while ((match = re.exec(headerBlock)) !== null) {
     headers[match[1]] = match[2].replace(/\\(["\\])/g, '$1');
   }
   return headers;
@@ -195,18 +202,22 @@ function parseCommandsFromComment(comment) {
  * @throws {Error} when a move token is not legal in the position it appears in.
  */
 export function parsePgn(text) {
-  const headers = parseHeaders(text);
-  const startFen = headers.FEN && headers.SetUp !== '0' ? headers.FEN : START_FEN;
-
-  // Movetext starts at the first line that is not a tag pair.
+  // Movetext starts at the first line that is not a tag pair; headers are read
+  // only from the block before it.
   const headerBlock = text.match(/^(?:\s*\[\s*\w+\s*"(?:[^"\\]|\\.)*"\s*\]\s*)*/);
-  const movetext = text.slice(headerBlock ? headerBlock[0].length : 0);
+  const headerText = headerBlock ? headerBlock[0] : '';
+  const movetext = text.slice(headerText.length);
+
+  const headers = parseHeaders(headerText);
+  const startFen = headers.FEN && headers.SetUp !== '0' ? headers.FEN : START_FEN;
 
   const tree = new GameTree(startFen, headers);
   const chess = new Chess(startFen);
 
   /** Parenthesis stack: each entry restores the node a variation branches from. */
   const stack = [];
+  /** Depth of a parenthesised group being skipped wholesale (see below). */
+  let skipping = 0;
   let node = tree.root;
   let result = headers.Result ?? '*';
 
@@ -220,9 +231,22 @@ export function parsePgn(text) {
   while ((match = TOKEN_RE.exec(movetext)) !== null) {
     const [token, comment, tag, open, close, nag, , gameResult, san] = match;
 
+    // A group opened before any move has nothing to branch from. Rather than
+    // silently promoting it to the mainline, skip it entirely.
+    if (skipping) {
+      if (open) skipping++;
+      else if (close) skipping--;
+      continue;
+    }
+
     if (tag) continue;
     if (gameResult) {
       result = gameResult;
+      // A result token at the top level terminates the game. Anything after it
+      // belongs to the next game in a multi-game file, and reading on either
+      // welds two games together or throws on a move that is illegal in the
+      // wrong position.
+      if (!stack.length) break;
       continue;
     }
     if (/^\d+\.(\.\.)?$/.test(token)) continue;
@@ -242,13 +266,22 @@ export function parsePgn(text) {
     }
     if (open) {
       // A variation branches from the position *before* the move just read.
+      // With no move read yet there is nothing to branch from, and treating it
+      // as one silently demoted the real mainline into a variation.
+      if (node.isRoot) {
+        skipping = 1;
+        continue;
+      }
       stack.push(node);
       node = node.parent ?? tree.root;
       positionAt(node);
       continue;
     }
     if (close) {
-      node = stack.pop() ?? tree.root;
+      // An unmatched close paren is malformed; ignoring it is better than
+      // teleporting the cursor to the root and re-rooting the rest of the game.
+      if (!stack.length) continue;
+      node = stack.pop();
       positionAt(node);
       continue;
     }

@@ -176,8 +176,19 @@ export function reviewGame(tree, { bookPlies = 0 } = {}) {
     }
   }
 
+  const graded = losses.w.length + losses.b.length + counts.w.book + counts.b.book;
   return {
     w: { ...counts.w, accuracy: accuracyFromLosses(losses.w), moves: losses.w.length },
     b: { ...counts.b, accuracy: accuracyFromLosses(losses.b), moves: losses.b.length },
+    /**
+     * Share of the mainline that actually carried a score, 0..1.
+     *
+     * A game played against the engine only has evaluations on the plies the
+     * engine itself searched, so grading it without a full analysis pass
+     * silently reports perfect accuracy for both sides. Callers should refuse
+     * to show an accuracy figure below a high coverage.
+     */
+    coverage: nodes.length ? graded / nodes.length : 0,
+    plies: nodes.length,
   };
 }

@@ -164,3 +164,44 @@ describe('Opponent', () => {
     expect(choice.move).toBeNull();
   });
 });
+
+describe('Opponent safety', () => {
+  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+  it('never plays a book move that is illegal in the actual position', async () => {
+    // History and position disagree — a restored game, or a PGN that began from
+    // a set-up position. The book move for this history cannot be played here.
+    const mismatched = '8/8/8/8/8/5k2/8/6K1 w - - 0 40';
+    for (let seed = 1; seed <= 20; seed++) {
+      const opponent = new Opponent({
+        engine: fakeEngine('g1f1'),
+        level: 10,
+        random: seeded(seed),
+        pace: 0,
+      });
+      const choice = await opponent.chooseMove({ fen: mismatched, sanHistory: ['e4'] });
+      expect(choice.source, 'played a book move from a mismatched history').not.toBe('book');
+    }
+  });
+
+  it('reports an abort that lands during the humanising pause', async () => {
+    const controller = new AbortController();
+    const opponent = new Opponent({
+      engine: fakeEngine(),
+      level: 1,
+      random: seeded(4),
+      // Full pacing, so the abort has a pause to land inside.
+      pace: 1,
+    });
+    const pending = opponent.chooseMove({
+      fen: START,
+      sanHistory: new Array(30).fill('x'),
+      signal: controller.signal,
+    });
+    controller.abort();
+    const choice = await pending;
+
+    expect(choice.source).toBe('aborted');
+    expect(choice.move).toBeNull();
+  });
+});

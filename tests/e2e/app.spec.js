@@ -258,3 +258,43 @@ test('a game round-trips through a share link', async ({ page }) => {
   expect(loaded.hash).toBe('');
   expect(errors).toEqual([]);
 });
+
+test('a finished game can be analysed and graphed', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  // A short decisive game, so the review has something to say.
+  await page.evaluate(() => {
+    for (const san of ['e4', 'e5', 'Bc4', 'Bc5', 'Qh5', 'Nf6', 'Qxf7#']) {
+      window.__app.session.state.move(san);
+    }
+    window.__app.actions.end();
+  });
+
+  // Not awaited: the action settles only once the summary dialog is dismissed.
+  await page.evaluate(() => {
+    window.__app.actions.review();
+  });
+  await page.waitForFunction(() => document.querySelector('.evalgraph') !== null, {
+    timeout: 90_000,
+  });
+
+  const outcome = await page.evaluate(() => {
+    const nodes = window.__app.session.state.tree.mainline();
+    return {
+      scored: nodes.filter((node) => node.evaluation).length,
+      total: nodes.length,
+      graded: nodes.filter((node) => node.quality).length,
+      graphPaths: document.querySelectorAll('.evalgraph path').length,
+    };
+  });
+
+  // Every position in the line must carry a score after the pass.
+  expect(outcome.scored).toBe(outcome.total);
+  expect(outcome.graded).toBeGreaterThan(0);
+  expect(outcome.graphPaths).toBeGreaterThanOrEqual(2);
+  await page.screenshot({ path: 'test-results/shots/app-review.png' });
+  expect(errors).toEqual([]);
+});

@@ -42,6 +42,8 @@ export const ENGINE_PROFILES = Object.freeze({
     sanPv: true, // lozzaHost defaults to HOST_WEB, which switches move output to SAN
     infoAfterBestMove: false,
     mateOffset: 1, // reports mate-in-1 as `mate 0`
+    // Its mate distance is |score|-derived, so the sign is lost entirely.
+    mateSignFromBestMove: true,
     cpScale: 1,
     cpParityFlips: false,
     budget: 'movetime',

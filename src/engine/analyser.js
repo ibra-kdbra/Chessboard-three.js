@@ -112,6 +112,58 @@ export class Analyser extends Emitter {
     }
   }
 
+  /**
+   * Evaluates every position in a line and writes the results onto the nodes.
+   *
+   * This is what makes a post-game review mean anything: without it the only
+   * evaluations on record are the ones the opponent happened to produce for its
+   * own moves, so half the game has no score and the accuracy figure is built
+   * on nothing.
+   *
+   * @param {Array<import('../core/gameTree.js').GameNode>} nodes mainline, in order
+   * @param {{ movetime?: number, onProgress?: (done: number, total: number) => void,
+   *           signal?: AbortSignal, rootFen?: string, root?: object }} [options]
+   * @returns {Promise<boolean>} false if it was cancelled part way
+   */
+  async reviewLine(nodes, { movetime = 260, onProgress, signal, rootFen, root } = {}) {
+    // Pause live analysis: two searches racing on one worker would serialise
+    // anyway, and the pump would keep re-targeting the position on screen.
+    const wasEnabled = this.enabled;
+    this.enabled = false;
+    this.target = null;
+    await this.engine.cancel().catch(() => {});
+
+    const positions = [];
+    if (rootFen && root) positions.push({ node: root, fen: rootFen, turn: 'w' });
+    for (const node of nodes) {
+      positions.push({ node, fen: node.fen, turn: node.color === 'w' ? 'b' : 'w' });
+    }
+
+    try {
+      for (const [index, entry] of positions.entries()) {
+        if (signal?.aborted) return false;
+        let result;
+        try {
+          result = await this.engine.search(entry.fen, { movetime });
+        } catch {
+          return false;
+        }
+        if (result.info?.score) {
+          const sign = entry.turn === 'w' ? 1 : -1;
+          entry.node.evaluation = {
+            ...result.info.score,
+            value: result.info.score.value * sign,
+          };
+          entry.node.pv = result.lines[0]?.pv ?? null;
+        }
+        onProgress?.(index + 1, positions.length);
+      }
+      return true;
+    } finally {
+      this.enabled = wasEnabled;
+    }
+  }
+
   dispose() {
     this.enabled = false;
     this.target = null;

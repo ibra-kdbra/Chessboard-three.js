@@ -245,10 +245,17 @@ export class Board3D extends Emitter {
     });
   }
 
-  #removePiece(square, { animate = true, delay = 0 } = {}) {
-    const group = this.pieces.get(square);
+  /**
+   * Removes a piece.
+   *
+   * Takes the Group itself, not a square. A capture plan is `move X→Y` plus
+   * `clear Y`, and the move re-keys the map to the arriving piece first — so
+   * looking the square up here dissolved the capturing piece and left the
+   * captured one orphaned in the scene graph forever.
+   */
+  #removePiece(group, { animate = true, delay = 0, square = null } = {}) {
     if (!group) return Promise.resolve();
-    this.pieces.delete(square);
+    if (square && this.pieces.get(square) === group) this.pieces.delete(square);
 
     const finish = () => {
       this.factory.dispose(group);
@@ -333,6 +340,15 @@ export class Board3D extends Emitter {
     // Captures start slightly late so the arriving piece is visibly the cause.
     const clearDelay = plan.some((step) => step.type === 'move') ? TIMING.capture * 0.35 : 0;
 
+    // Resolve every doomed piece BEFORE any move re-keys the map onto its
+    // square, or a capture takes the wrong mesh with it.
+    const doomed = plan
+      .filter((step) => step.type === 'clear')
+      .map((step) => ({ square: step.square, group: this.pieces.get(step.square) }));
+    for (const { square, group } of doomed) {
+      if (this.pieces.get(square) === group) this.pieces.delete(square);
+    }
+
     for (const step of plan) {
       if (step.type === 'move') {
         const from = squareToWorld(step.source, this._orientation);
@@ -340,8 +356,10 @@ export class Board3D extends Emitter {
         jobs.push(this.#movePiece(step.source, step.destination, movePlan(step.piece, from, to)));
       }
     }
+    for (const { group } of doomed) {
+      jobs.push(this.#removePiece(group, { delay: clearDelay }));
+    }
     for (const step of plan) {
-      if (step.type === 'clear') jobs.push(this.#removePiece(step.square, { delay: clearDelay }));
       if (step.type === 'add')
         jobs.push(this.#addPiece(step.square, step.piece, { delay: clearDelay }));
     }
@@ -360,6 +378,16 @@ export class Board3D extends Emitter {
         this.factory.dispose(group);
         this.pieceGroup.remove(group);
         this.pieces.delete(square);
+      }
+    }
+    // Anything still parented but no longer in the index is an orphan — the
+    // index is the record, so the scene graph follows it rather than the
+    // reverse.
+    const live = new Set(this.pieces.values());
+    for (const child of [...this.pieceGroup.children]) {
+      if (!live.has(child)) {
+        this.factory.dispose(child);
+        this.pieceGroup.remove(child);
       }
     }
     for (const [square, code] of Object.entries(target)) {

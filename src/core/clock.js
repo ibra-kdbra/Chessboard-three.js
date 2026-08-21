@@ -80,10 +80,17 @@ export class Clock extends Emitter {
     return Math.max(0, base - (this.now() - this.startedAt));
   }
 
-  /** Hands the move to `color` and starts their clock. */
+  /**
+   * Hands the move to `color` and starts their clock.
+   *
+   * Pressing for the side already running is a no-op rather than a restart:
+   * resetting `startedAt` would silently forgive every second they had already
+   * spent, so navigating the move list mid-game handed back free time.
+   */
   press(color) {
     if (this.isUntimed) return;
-    if (this.running && this.running !== color) this.#stopRunning({ applyIncrement: true });
+    if (this.running === color) return;
+    if (this.running) this.#stopRunning({ applyIncrement: true });
     this.running = color;
     this.startedAt = this.now();
     this.emit('start', { color });

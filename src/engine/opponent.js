@@ -12,9 +12,29 @@
  * a deliberately worse move, drawn by static evaluation from a band of
  * plausible alternatives — mistakes that look like mistakes a person makes.
  */
+import { Chess } from 'chess.js';
 import { scoreMoves } from '../core/staticEval.js';
 
 const toMove = (move) => ({ from: move.from, to: move.to, promotion: move.promotion });
+
+/** Whether a SAN string is playable in a position. */
+function isLegalSan(fen, san) {
+  try {
+    const chess = new Chess(fen);
+    return chess.move(san) !== null;
+  } catch {
+    return false;
+  }
+}
+
+const aborted = (startedAt) => ({
+  move: null,
+  san: null,
+  source: 'aborted',
+  evaluation: null,
+  info: null,
+  elapsedMs: performance.now() - startedAt,
+});
 import { pickBookMove } from '../core/openings.js';
 import { parseUciMove } from './uciEngine.js';
 
@@ -229,10 +249,17 @@ export class Opponent {
     const settings = this.settings;
 
     // 1. Opening book, while the level still has book left.
+    //
+    // The book is looked up by move history, but the position is what actually
+    // has to accept the move. Those can disagree — a restored game, an imported
+    // PGN starting from a set-up position — and a book move that is illegal
+    // here would be rejected by the rules and leave the game waiting forever
+    // for a move the computer already thinks it made.
     if (sanHistory.length < settings.bookPlies) {
       const chosen = pickBookMove(sanHistory, this.random);
-      if (chosen) {
+      if (chosen && isLegalSan(fen, chosen.san)) {
         await this.#pause(settings.minThinkMs * this.pace, startedAt, signal);
+        if (signal?.aborted) return aborted(startedAt);
         return {
           move: null,
           san: chosen.san,
@@ -306,6 +333,10 @@ export class Opponent {
     }
 
     await this.#pause(settings.minThinkMs * this.pace, startedAt, signal);
+    // The pause resolves early on abort, so it has to be re-checked: otherwise
+    // a take-back during the humanising delay still returns a playable move and
+    // the engine's move lands after the position has already changed.
+    if (signal?.aborted) return aborted(startedAt);
     return {
       move,
       san: null,

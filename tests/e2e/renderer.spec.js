@@ -127,3 +127,41 @@ test('captures a screenshot of every theme', async ({ page }) => {
     expect(await distinctColours(shot), `${theme} rendered flat`).toBeGreaterThan(400);
   }
 });
+
+test('a capture removes the captured piece, not the capturing one', async ({ page }) => {
+  const errors = [];
+  guardConsole(page, errors);
+  await page.goto('/sandbox.html');
+  await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
+
+  const outcome = await page.evaluate(async () => {
+    const board = window.__board;
+    const { fenToPosition } = await import('/src/core/positionDiff.js');
+    await board.setPosition(
+      fenToPosition('rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2'),
+      { animate: false },
+    );
+    // exd5: the plan is `move e4->d5` plus `clear d5`, and both name the same
+    // square. Resolving the removal by square took the arriving pawn instead.
+    await board.setPosition(
+      fenToPosition('rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 2'),
+      { animate: true },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    return {
+      indexed: Object.fromEntries(
+        [...board.pieces].map(([square, group]) => [square, group.userData.pieceCode]),
+      ),
+      // The scene graph is where the orphan would linger: a piece removed from
+      // the index but never detached stays visible forever.
+      sceneChildren: board.pieceGroup.children.length,
+      d5: board.pieces.get('d5')?.userData.pieceCode ?? null,
+    };
+  });
+
+  expect(outcome.d5).toBe('wP');
+  expect(Object.keys(outcome.indexed)).toHaveLength(31);
+  expect(outcome.sceneChildren, 'an orphaned mesh was left in the scene').toBe(31);
+  expect(errors).toEqual([]);
+});

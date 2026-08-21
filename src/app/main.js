@@ -29,6 +29,7 @@ import { MoveList } from '../ui/moveList.js';
 import { EnginePanel } from '../ui/enginePanel.js';
 import { Toaster } from '../ui/toast.js';
 import { showDialog, askPromotion } from '../ui/dialog.js';
+import { buildEvalGraph } from '../ui/evalGraph.js';
 import { describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
 import { opposite } from '../core/constants.js';
@@ -297,7 +298,8 @@ export async function bootstrap(root) {
   session.on('gameover', (result) => onGameOver(result));
 
   // The clock is recomputed from timestamps, so it needs a heartbeat to redraw.
-  setInterval(() => session.clock.update(), 100);
+  // Kept so teardown can stop it; an orphaned interval pins the whole session.
+  const clockTimer = setInterval(() => session.clock.update(), 100);
 
   /**
    * Guards against a doubled ceremony. Several things can end a game at once —
@@ -321,14 +323,80 @@ export async function bootstrap(root) {
       difficulty: settings.difficulty,
     });
 
-    const review = reviewGame(session.state.tree);
     const answer = await showDialog({
       title: describeResult(result),
       subtitle: reasonText(result.reason),
-      body: buildReview(review),
+      body: buildReview(reviewGame(session.state.tree)),
       actions: [
-        { label: 'Review the game', value: 'review' },
+        { label: 'Close', value: null },
+        { label: 'Analyse the game', value: 'analyse' },
         { label: 'Rematch', value: 'rematch', variant: 'primary', autofocus: true },
+      ],
+    });
+    if (answer === 'rematch') await startNewGame({ color: opposite(session.playerColor) });
+    else if (answer === 'analyse') await runPostGameReview();
+  }
+
+  /**
+   * Scores every position in the finished game, then shows the summary.
+   *
+   * Without this pass the only evaluations on record are the ones the opponent
+   * produced for its own moves, so half the game has no score and an accuracy
+   * figure built on it would be fiction.
+   */
+  async function runPostGameReview() {
+    const nodes = session.state.tree.mainline();
+    if (!nodes.length) return;
+
+    const progress = el('progress', { max: nodes.length + 1, value: 0, style: { width: '100%' } });
+    const label = el('p.dialog__subtitle', { text: `Analysing ${nodes.length} positions…` });
+    const controller = new AbortController();
+    const dialog = showDialog({
+      title: 'Game review',
+      body: [label, progress],
+      actions: [{ label: 'Stop', value: 'stop' }],
+      dismissible: false,
+    }).then((value) => {
+      if (value === 'stop') controller.abort();
+      return value;
+    });
+
+    await analyser.start().catch(() => {});
+    const completed = await analyser.reviewLine(nodes, {
+      root: session.state.tree.root,
+      rootFen: session.state.tree.startFen,
+      signal: controller.signal,
+      onProgress: (done, total) => {
+        progress.value = done;
+        progress.max = total;
+        label.textContent = `Analysing position ${done} of ${total}…`;
+      },
+    });
+
+    // Close the progress dialog however it ended.
+    document.querySelector('dialog[open]')?.close();
+    await dialog;
+    if (!completed) return;
+
+    const opening = session.status().opening;
+    const review = reviewGame(session.state.tree, { bookPlies: opening?.ply ?? 0 });
+    moveList.render(session.state.tree);
+
+    const answer = await showDialog({
+      title: 'Game review',
+      subtitle: opening ? `${opening.eco} · ${opening.name}` : undefined,
+      body: [
+        buildEvalGraph(nodes, {
+          onSelect: (node) => {
+            session.goTo(node.id);
+            syncBoard({ animate: false });
+          },
+        }),
+        buildReview(review),
+      ],
+      actions: [
+        { label: 'Done', value: null, autofocus: true },
+        { label: 'Rematch', value: 'rematch', variant: 'primary' },
       ],
     });
     if (answer === 'rematch') await startNewGame({ color: opposite(session.playerColor) });
@@ -403,6 +471,7 @@ export async function bootstrap(root) {
     typing: () => {},
     help: () => showShortcutHelp(),
     resign: () => confirmResign(),
+    review: () => runPostGameReview(),
     draw: () => offerDraw(),
     share: () => shareGame(),
     exportGame: () => exportGame(),
@@ -938,6 +1007,16 @@ export async function bootstrap(root) {
   document.addEventListener('pointerdown', () => sound.resume(), { once: true });
   window.addEventListener('beforeunload', persist);
 
+  /** Tears the whole app down. Used by tests and by the dimension switch. */
+  function destroy() {
+    clearInterval(clockTimer);
+    window.removeEventListener('beforeunload', persist);
+    keyboard.dispose();
+    analyser.dispose();
+    board.destroy();
+    session.dispose();
+  }
+
   return {
     session,
     sound,
@@ -946,6 +1025,7 @@ export async function bootstrap(root) {
     actions,
     analyser,
     setDimensions,
+    destroy,
     /** The mounted renderer changes when dimensions are switched. */
     get board() {
       return board;
@@ -981,6 +1061,15 @@ function reasonText(reason) {
 }
 
 function buildReview(review) {
+  // Below this, too much of the game went unscored for an accuracy figure to
+  // mean anything — showing one anyway reads as "you played perfectly".
+  if (review.coverage < 0.9) {
+    return el('p', {
+      text: 'Run a full analysis to see accuracy and where the game turned.',
+      style: { color: 'var(--text-2)', fontSize: 'var(--text-sm)', margin: '0' },
+    });
+  }
+
   const row = (label, white, black) => [
     el('span.review__label', { text: label }),
     el('span.review__value', { text: String(white) }),
@@ -996,6 +1085,7 @@ function buildReview(review) {
     ...row('Blunders', review.w.blunder, review.b.blunder),
     ...row('Mistakes', review.w.mistake, review.b.mistake),
     ...row('Inaccuracies', review.w.inaccuracy, review.b.inaccuracy),
+    ...row('Book moves', review.w.book, review.b.book),
   ]);
 }
 

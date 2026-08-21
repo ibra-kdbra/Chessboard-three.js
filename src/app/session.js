@@ -47,6 +47,8 @@ export class Session extends Emitter {
   }
 
   #moveStartedAt = 0;
+  /** Why the engine is busy: 'opponent' or 'hint'. They are handled differently. */
+  thinkingReason = null;
 
   #buildClock() {
     const control = timeControlById(this.settings.timeControl ?? 'unlimited');
@@ -128,11 +130,23 @@ export class Session extends Emitter {
     this.#moveStartedAt = performance.now();
 
     await this.engine?.newGame();
+    this.startClock();
     this.emit('change', { node: this.state.node, reason: 'newgame' });
     this.emit('status', this.status());
     // If the human is black, the computer opens.
     await this.maybePlayEngineMove();
     return this.state;
+  }
+
+  /**
+   * Starts the side-to-move's clock.
+   *
+   * Clocks were only ever pressed *after* a move, so the first move of every
+   * timed game was free — and a restored game resumed with both clocks stopped.
+   */
+  startClock() {
+    if (this.clock.isUntimed || this.state.isFinished) return;
+    this.clock.press(this.state.turn);
   }
 
   /** True when the side to move is the human's. */
@@ -154,9 +168,17 @@ export class Session extends Emitter {
   async play(move) {
     if (this.state.isFinished) return null;
     if (this.thinking) {
-      // Queue it rather than dropping it: the player has already committed.
-      this.premove = move;
-      return null;
+      if (this.thinkingReason === 'hint') {
+        // A hint is for the player's benefit; if they have decided already,
+        // abandon it and play. Queuing here left the move to fire much later,
+        // as a second move in a row.
+        await this.cancelThinking();
+      } else {
+        // The opponent is thinking. Queue rather than drop: the player has
+        // already committed, and the move is played the moment it answers.
+        this.premove = move;
+        return null;
+      }
     }
     if (this.state.isReviewing) {
       // Moving from a reviewed position starts a variation there, which is the
@@ -198,6 +220,7 @@ export class Session extends Emitter {
     if (this.state.chess.isGameOver()) return null;
 
     this.thinking = true;
+    this.thinkingReason = 'opponent';
     this.emit('thinking', { thinking: true });
     this.emit('status', this.status());
 
@@ -214,10 +237,13 @@ export class Session extends Emitter {
     } finally {
       this.pendingSearch = null;
       this.thinking = false;
+      this.thinkingReason = null;
       this.emit('thinking', { thinking: false });
     }
 
     if (!choice || choice.source === 'aborted') {
+      // Nothing was played, so a queued premove would be a move out of turn.
+      this.premove = null;
       this.emit('status', this.status());
       return null;
     }
@@ -248,6 +274,9 @@ export class Session extends Emitter {
     this.pendingSearch?.abort();
     await this.engine?.cancel().catch(() => {});
     this.thinking = false;
+    this.thinkingReason = null;
+    // Whatever was queued was queued against a search that never landed.
+    this.premove = null;
     this.emit('thinking', { thinking: false });
   }
 
@@ -282,15 +311,26 @@ export class Session extends Emitter {
 
   /**
    * Takes back to the player's previous turn.
-   * In a game against the computer that means two plies, not one — undoing only
-   * the computer's reply would just hand it another go at the same position.
+   *
+   * Against the computer that usually means two plies — undoing only its reply
+   * would just hand it another go at the same position — but not always. If the
+   * computer has not yet replied, or the game is only one ply old, undoing two
+   * would take back a move the player never made.
    */
   async takeback() {
     await this.cancelThinking();
     this.state.toEnd();
-    const plies = this.mode === 'engine' ? 2 : 1;
-    for (let i = 0; i < plies; i++) this.state.undo();
+    if (this.state.ply === 0) return;
+
+    // One ply always. A second only if it exists and it was the computer's.
+    this.state.undo();
+    if (this.mode === 'engine' && this.state.ply > 0 && this.state.turn !== this.playerColor) {
+      this.state.undo();
+    }
     this.emit('status', this.status());
+    // Taking back the computer's opening move leaves it on move with nothing
+    // to prompt it. Ask again — it may well choose differently.
+    await this.maybePlayEngineMove();
   }
 
   resign() {
@@ -326,6 +366,7 @@ export class Session extends Emitter {
     this.playerColor = playerColor;
     this.lastMove = this.state.node.move ?? null;
     this.#moveStartedAt = performance.now();
+    this.startClock();
     this.emit('change', { node: this.state.node, reason: 'load' });
     this.emit('status', this.status());
     return this.state;
@@ -349,6 +390,7 @@ export class Session extends Emitter {
   async hint() {
     if (!this.engine || this.thinking || this.state.isFinished) return null;
     this.thinking = true;
+    this.thinkingReason = 'hint';
     this.emit('thinking', { thinking: true, reason: 'hint' });
     try {
       const result = await this.engine.search(this.state.fen, { movetime: 1200 });
@@ -358,6 +400,7 @@ export class Session extends Emitter {
       return null;
     } finally {
       this.thinking = false;
+      this.thinkingReason = null;
       this.emit('thinking', { thinking: false });
     }
   }
@@ -407,6 +450,8 @@ export class Session extends Emitter {
 
   dispose() {
     this.engine?.dispose();
+    this.state.removeAllListeners();
+    this.clock.removeAllListeners();
     this.removeAllListeners();
   }
 }

@@ -10,7 +10,16 @@ import { Chess } from 'chess.js';
 import { GameTree } from './gameTree.js';
 import { writePgn, parsePgn } from './pgn.js';
 import { Emitter } from './emitter.js';
-import { PIECE_VALUES, PIECE_TYPES, START_FEN, WHITE, BLACK, opposite } from './constants.js';
+import {
+  KING,
+  PAWN,
+  PIECE_TYPES,
+  PIECE_VALUES,
+  START_FEN,
+  WHITE,
+  BLACK,
+  opposite,
+} from './constants.js';
 
 /** chess.js Move instances carry methods; the tree stores plain snapshots. */
 function plainMove(move) {
@@ -41,6 +50,13 @@ export class GameState extends Emitter {
     this.tree = new GameTree(fen, headers);
     /** Set when a player resigns or a draw is agreed — chess.js cannot know about it. */
     this.adjudication = null;
+    /**
+     * The Result tag of an imported game, kept only so export round-trips.
+     * Deliberately NOT an adjudication: a game someone imported to look at is
+     * not a game *they* have finished, and treating it as one froze the tree —
+     * no move could be played anywhere in it.
+     */
+    this.importedResult = null;
   }
 
   // ---------------------------------------------------------------- position
@@ -144,12 +160,32 @@ export class GameState extends Emitter {
 
   // -------------------------------------------------------------- navigation
 
-  /** Replays the tree path into chess.js so the rules engine matches the view. */
+  /**
+   * Replays the tree path into chess.js so the rules engine matches the view.
+   *
+   * If a stored move no longer replays — an edited save, a schema change — the
+   * cursor stops at the last position that did, and the unreachable tail is
+   * cut. Leaving the rules engine and the tree disagreeing is worse than losing
+   * the end of a corrupt game.
+   */
   syncToNode(node = this.tree.current) {
-    this.chess = new Chess(this.tree.startFen);
-    for (const step of node.path().slice(1)) this.chess.move(step.move.san);
-    this.tree.current = node;
-    return node;
+    const chess = new Chess(this.tree.startFen);
+    let reached = this.tree.root;
+    for (const step of node.path().slice(1)) {
+      try {
+        if (!chess.move(step.move.san)) break;
+      } catch {
+        break;
+      }
+      reached = step;
+    }
+    this.chess = chess;
+    this.tree.current = reached;
+    if (reached !== node) {
+      this.tree.truncateAfter(reached);
+      this.emit('treechange', { reason: 'repair' });
+    }
+    return reached;
   }
 
   goTo(node) {
@@ -260,10 +296,17 @@ export class GameState extends Emitter {
     const captured = { w: [], b: [] };
     let balance = 0;
     for (const color of [WHITE, BLACK]) {
+      // Every promotion consumes a pawn, so a side that promoted is short a
+      // pawn without anyone having taken it. Discount those, or the tray shows
+      // a capture that never happened.
+      const promotions = PIECE_TYPES.filter((type) => type !== PAWN && type !== KING).reduce(
+        (total, type) => total + Math.max(0, (live[color][type] ?? 0) - START_COUNTS[type]),
+        0,
+      );
       for (const type of PIECE_TYPES) {
-        const missing = START_COUNTS[type] - (live[color][type] ?? 0);
-        // Promotions can leave a side with *more* than it started with.
-        for (let i = 0; i < missing; i++) captured[opposite(color)].push(type);
+        let missing = START_COUNTS[type] - (live[color][type] ?? 0);
+        if (type === PAWN) missing -= promotions;
+        for (let i = 0; i < Math.max(0, missing); i++) captured[opposite(color)].push(type);
         balance += (color === WHITE ? 1 : -1) * (live[color][type] ?? 0) * PIECE_VALUES[type];
       }
     }
@@ -273,9 +316,50 @@ export class GameState extends Emitter {
 
   // ------------------------------------------------------------ serialisation
 
-  /** Full PGN, variations and annotations included. */
+  /**
+   * Full PGN, variations and annotations included.
+   *
+   * The result is read from the END of the mainline, not from wherever the
+   * cursor happens to be — exporting a finished game while looking back at an
+   * earlier move used to write `*`.
+   */
   pgn(options = {}) {
-    return writePgn(this.tree, { result: this.result().scoreString, ...options });
+    return writePgn(this.tree, { result: this.finalResult().scoreString, ...options });
+  }
+
+  /**
+   * The game's result, judged at the end of the mainline rather than at the
+   * cursor. `result()` answers "what is the state of the position I am looking
+   * at"; this answers "how did the game finish".
+   */
+  finalResult() {
+    if (this.adjudication) return this.result();
+    const last = this.tree.mainline().at(-1);
+    if (last) {
+      const scratch = new Chess(last.fen);
+      if (scratch.isCheckmate()) {
+        const winner = opposite(scratch.turn());
+        return {
+          over: true,
+          winner,
+          reason: 'checkmate',
+          scoreString: winner === WHITE ? '1-0' : '0-1',
+        };
+      }
+      if (scratch.isGameOver()) {
+        return { over: true, winner: null, reason: 'draw', scoreString: '1/2-1/2' };
+      }
+    }
+    if (this.importedResult) {
+      return {
+        over: true,
+        winner:
+          this.importedResult === '1-0' ? WHITE : this.importedResult === '0-1' ? BLACK : null,
+        reason: 'recorded',
+        scoreString: this.importedResult,
+      };
+    }
+    return { over: false, winner: null, reason: 'in-progress', scoreString: '*' };
   }
 
   /**
@@ -287,20 +371,10 @@ export class GameState extends Emitter {
     this.tree = tree;
     this.startFen = tree.startFen;
     this.adjudication = null;
+    // Recorded, not adjudicated: an imported result describes what happened to
+    // someone else's game, and must not stop this one from being played on.
+    this.importedResult = result === '*' ? null : result;
     this.syncToNode(tree.root);
-    // Resignations and agreed draws only exist in the Result tag.
-    if (result !== '*' && !this.chess.isGameOver()) {
-      const mainlineEnd = tree.mainline().at(-1);
-      if (mainlineEnd) {
-        const scratch = new Chess(mainlineEnd.fen);
-        if (!scratch.isGameOver()) {
-          this.adjudication = {
-            kind: 'adjourned',
-            winner: result === '1-0' ? WHITE : result === '0-1' ? BLACK : null,
-          };
-        }
-      }
-    }
     this.emit('treechange', { reason: 'load' });
     this.emit('change', { node: this.tree.current, reason: 'load' });
     return this;
@@ -311,6 +385,7 @@ export class GameState extends Emitter {
       version: 1,
       startFen: this.startFen,
       adjudication: this.adjudication,
+      importedResult: this.importedResult,
       tree: this.tree.toJSON(),
     };
   }
@@ -319,6 +394,7 @@ export class GameState extends Emitter {
     const state = new GameState({ fen: data.startFen });
     state.tree = GameTree.fromJSON(data.tree);
     state.adjudication = data.adjudication ?? null;
+    state.importedResult = data.importedResult ?? null;
     state.syncToNode(state.tree.current);
     return state;
   }
