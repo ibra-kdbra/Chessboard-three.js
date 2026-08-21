@@ -8,7 +8,15 @@
     "type": "git",
     "url": "https://github.com/ibra-kdbra/Chessboard-three.js"
   },
-  "keywords": ["chess", "chessboard", "three.js", "webgl", "3d", "game", "uci"],
+  "keywords": [
+    "chess",
+    "chessboard",
+    "three.js",
+    "webgl",
+    "3d",
+    "game",
+    "uci"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -35,6 +43,7 @@
     "@playwright/test": "^1.62.1",
     "eslint": "^9.39.5",
     "globals": "^17.11.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.6",
     "vitest": "^3.2.7"
   }

@@ -14,11 +14,14 @@
 import {
   ACESFilmicToneMapping,
   AmbientLight,
+  CircleGeometry,
   Color,
   DirectionalLight,
   Fog,
   Group,
   HalfFloatType,
+  Mesh,
+  MeshStandardMaterial,
   PCFSoftShadowMap,
   PMREMGenerator,
   PerspectiveCamera,
@@ -43,10 +46,64 @@ export const QUALITY_TIERS = Object.freeze({
 
 export const QUALITY_ORDER = Object.freeze(['low', 'medium', 'high', 'ultra']);
 
-/** Camera framing, carried over from the original and then tightened. */
-export const CAMERA_DISTANCE = 19.5;
+/** Camera framing. Distance is a starting point; fitCameraToBoard sets the real one. */
+export const CAMERA_DISTANCE = 26;
 export const CAMERA_POLAR_ANGLE = Math.PI / 4.4;
-export const CAMERA_TARGET = new Vector3(0, -1.2, 0);
+export const CAMERA_TARGET = new Vector3(0, -0.6, 0);
+
+/** Half-extent of the board including its frame, for framing calculations. */
+export const BOARD_RADIUS = 10.3;
+
+/**
+ * Pushes the camera along its own view direction until the board's footprint
+ * fits the viewport, then holds that distance.
+ *
+ * A fixed distance cannot work: the same number that frames a 16:9 desktop
+ * canvas crops half the board off a phone in portrait. Projecting the corners
+ * and scaling until they land inside the frustum handles any aspect and any
+ * camera angle, including the ones the user orbits to.
+ *
+ * @param {PerspectiveCamera} camera
+ * @param {Vector3} target point the camera looks at
+ * @param {{ radius?: number, margin?: number, iterations?: number }} [options]
+ * @returns {number} the distance settled on
+ */
+export function fitCameraToBoard(camera, target, { radius = BOARD_RADIUS, margin = 1.08, iterations = 6 } = {}) {
+  // The board is flat, so its silhouette is the four top corners of a square
+  // plus a little headroom for the tallest piece.
+  const corners = [];
+  for (const x of [-radius, radius]) {
+    for (const z of [-radius, radius]) {
+      for (const y of [0, 3.2]) corners.push(new Vector3(x, y, z));
+    }
+  }
+
+  const direction = camera.position.clone().sub(target);
+  let distance = direction.length();
+  direction.normalize();
+
+  for (let i = 0; i < iterations; i++) {
+    camera.position.copy(target).addScaledVector(direction, distance);
+    camera.lookAt(target);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+
+    let worst = 0;
+    for (const corner of corners) {
+      const projected = corner.clone().project(camera);
+      worst = Math.max(worst, Math.abs(projected.x), Math.abs(projected.y));
+    }
+    if (worst <= 0.0001) break;
+    const scale = worst * margin;
+    if (Math.abs(scale - 1) < 0.005) break;
+    distance *= scale;
+  }
+
+  camera.position.copy(target).addScaledVector(direction, distance);
+  camera.lookAt(target);
+  camera.updateProjectionMatrix();
+  return distance;
+}
 
 /**
  * A first guess at what this device can handle. Deliberately conservative —
@@ -134,7 +191,7 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, tier.maxPixelRatio));
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.72;
   renderer.shadowMap.enabled = tier.shadows;
   renderer.shadowMap.type = PCFSoftShadowMap;
   renderer.domElement.style.display = 'block';
@@ -155,7 +212,9 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
   scene.environmentIntensity = theme.environment?.intensity ?? 0.6;
   pmrem.dispose();
 
-  const camera = new PerspectiveCamera(42, 1, 0.1, 260);
+  // A narrower field of view than the original's 60 degrees: at 60 the corner
+  // pieces splay outwards badly on a wide canvas.
+  const camera = new PerspectiveCamera(36, 1, 0.1, 260);
   camera.position.set(
     0,
     CAMERA_DISTANCE * Math.cos(CAMERA_POLAR_ANGLE),
@@ -169,7 +228,7 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
 
   // Key: the only shadow caster. Directional rather than spot so the shadow
   // frustum is a simple box and the whole board stays inside it.
-  const key = new DirectionalLight(0xfff4e6, 2.6);
+  const key = new DirectionalLight(0xfff4e6, 1.35);
   key.position.set(-11, 20, 9);
   key.castShadow = tier.shadows;
   if (tier.shadows) {
@@ -190,18 +249,34 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
   lights.add(key, key.target);
 
   // Fill: opposite side, cool, no shadow — lifts the dark pieces off the board.
-  const fill = new DirectionalLight(0xbcd4ff, 0.85);
+  const fill = new DirectionalLight(0xbcd4ff, 0.5);
   fill.position.set(13, 9, -11);
   lights.add(fill, fill.target);
 
-  // Rim: low and behind, to separate silhouettes from the backdrop.
-  const rim = new PointLight(0xffd9a0, 40, 60, 2);
-  rim.position.set(0, 4, -16);
+  // Rim: low and behind, to separate silhouettes from the backdrop. Kept modest
+  // — pushed harder it blows out the frame's near edge into a white bar.
+  const rim = new PointLight(0xffd9a0, 14, 70, 2);
+  rim.position.set(-4, 6, -19);
   lights.add(rim);
 
-  const ambient = new AmbientLight(0xffffff, 0.25);
+  const ambient = new AmbientLight(0xffffff, 0.1);
   lights.add(ambient);
   scene.add(lights);
+
+  // A large dark disc under the board. Without something for the board's own
+  // shadow to fall on, it reads as floating in a void rather than sitting on a
+  // table, and the shadow map has nothing to draw into.
+  const tableMaterial = new MeshStandardMaterial({
+    color: new Color(theme.table?.color ?? 0x0e1116),
+    roughness: theme.table?.roughness ?? 0.85,
+    metalness: 0,
+  });
+  const table = new Mesh(new CircleGeometry(46, 64), tableMaterial);
+  table.rotation.x = -Math.PI / 2;
+  table.position.y = -0.78;
+  table.receiveShadow = true;
+  table.name = 'table';
+  scene.add(table);
 
   // --- post-processing ------------------------------------------------------
   const composer = new EffectComposer(renderer);
@@ -231,12 +306,16 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
     camera,
     composer,
     lights: { key, fill, rim, ambient, group: lights },
+    table,
     bloomPass,
     quality,
     tier,
 
-    /** Sizes everything from the container's real box, DPR included. */
-    resize() {
+    /**
+     * Sizes everything from the container's real box, DPR included, and
+     * reframes the board for the new aspect ratio.
+     */
+    resize({ refit = true } = {}) {
       const rect = container.getBoundingClientRect();
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
@@ -245,6 +324,7 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
       bloomPass?.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      if (refit) fitCameraToBoard(camera, CAMERA_TARGET);
       return { width, height };
     },
 
@@ -252,9 +332,11 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
       composer.render();
     },
 
-    /** Applies a theme's background, fog, environment strength and bloom. */
+    /** Applies a theme's background, fog, table, environment strength and bloom. */
     applyTheme(next) {
       scene.background = new Color(next.background);
+      tableMaterial.color.set(next.table?.color ?? 0x0e1116);
+      tableMaterial.roughness = next.table?.roughness ?? 0.85;
       scene.fog = next.fog ? new Fog(next.fog.color, next.fog.near, next.fog.far) : null;
       scene.environmentIntensity = next.environment?.intensity ?? 0.6;
       if (bloomPass) {
@@ -268,6 +350,8 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
     },
 
     dispose() {
+      table.geometry.dispose();
+      tableMaterial.dispose();
       environment.texture.dispose();
       composer.dispose?.();
       renderer.dispose();

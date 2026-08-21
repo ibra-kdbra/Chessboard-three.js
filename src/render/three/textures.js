@@ -104,19 +104,29 @@ function finish(canvas, { repeat = 1, srgb = true }) {
 }
 
 /**
- * Wood grain: fbm-warped rings, the standard trick for turning 1D ring spacing
- * into something that reads as sawn timber.
+ * Wood grain.
+ *
+ * A plain warped sine gives evenly spaced, symmetric stripes — corrugated card,
+ * not timber. Real growth rings are asymmetric: a wide band of pale earlywood
+ * ending in a narrow dark line of latewood. So the ring phase is taken as a
+ * sawtooth and raised to a high power, which puts the dark line at the end of
+ * each cycle, and the phase is warped hard enough (turbulence in whole ring
+ * cycles) for the rings to wander into the cathedral arches you see on a
+ * flat-sawn board.
  */
 export function woodTexture({
   size = 1024,
   light = 0xc8a06a,
   dark = 0x6b4526,
-  rings = 14,
-  turbulence = 5.5,
+  rings = 12,
+  turbulence = 2.6,
+  sharpness = 6,
+  pores = 0.05,
   seed = 7,
   angle = 0,
 } = {}) {
-  return cached(`wood:${size}:${light}:${dark}:${rings}:${turbulence}:${seed}:${angle}`, () => {
+  const key = `wood:${size}:${light}:${dark}:${rings}:${turbulence}:${sharpness}:${pores}:${seed}:${angle}`;
+  return cached(key, () => {
     const { canvas, ctx } = makeCanvas(size);
     const image = ctx.createImageData(size, size);
     const noise = makeNoise(seed);
@@ -129,13 +139,24 @@ export function woodTexture({
       for (let x = 0; x < size; x++) {
         const u = x / size;
         const v = y / size;
-        const ru = u * cos - v * sin;
-        const rv = u * sin + v * cos;
-        const warp = fbm(noise, ru * 4, rv * 4, 4) * turbulence;
-        const ring = (Math.sin((ru * rings + warp) * Math.PI * 2) + 1) / 2;
-        // Fine longitudinal fibres on top of the rings.
-        const fibre = fbm(noise, ru * 220, rv * 6, 2) * 0.16;
-        const t = Math.max(0, Math.min(1, ring ** 1.4 + fibre - 0.08));
+        // `across` runs perpendicular to the grain, `along` down its length.
+        const across = u * cos - v * sin;
+        const along = u * sin + v * cos;
+
+        // Stretched along the grain so rings stay roughly parallel while still
+        // bending; this is what produces the arches.
+        const warp = (fbm(noise, across * 1.6, along * 0.4, 5) - 0.5) * turbulence;
+        const phase = across * rings + warp;
+        const saw = phase - Math.floor(phase);
+
+        // Latewood: near zero for most of the ring, then climbing sharply.
+        let value = saw ** sharpness;
+        // Fine pores scratched along the grain.
+        value += (fbm(noise, across * 130, along * 6, 2) - 0.5) * pores * 2;
+        // Broad tonal drift, so no two areas of the board match exactly.
+        value += (fbm(noise, across * 0.9, along * 0.7, 3) - 0.5) * 0.18;
+
+        const t = 1 - Math.max(0, Math.min(1, value));
         const [r, g, b] = mixColor(darkRgb, lightRgb, t);
         const offset = (y * size + x) * 4;
         image.data[offset] = r;

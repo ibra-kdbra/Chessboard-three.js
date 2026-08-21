@@ -13,6 +13,7 @@
  */
 import {
   BoxGeometry,
+  BufferAttribute,
   CanvasTexture,
   CircleGeometry,
   DoubleSide,
@@ -35,6 +36,8 @@ export const BOARD_SPAN = SQUARE_SIZE * 8;
 export const SQUARE_THICKNESS = 0.5;
 export const FRAME_WIDTH = 2.1;
 export const FRAME_HEIGHT = 0.72;
+/** Height of the frame's upper face. The playing surface is y = 0. */
+export const FRAME_TOP = 0.16;
 
 /** World position of a square's centre, on the playing surface. */
 export function squareToWorld(square, orientation = 'white') {
@@ -89,8 +92,15 @@ function frameShape() {
   return shape;
 }
 
-/** Notation for one board edge, drawn to a canvas — no font asset needed. */
-function notationTexture(labels, { color = '#e8d3a8', size = 1024 } = {}) {
+/**
+ * Notation for one board edge, drawn to a canvas — no font asset needed.
+ *
+ * `glyphRotation` turns each character within its cell. The rank strips run
+ * along the board's side, so without it the digits lie on their side; a real
+ * board prints them upright to whoever is sitting at that edge, which is what
+ * the far-side fade then compensates for.
+ */
+function notationTexture(labels, { color = '#e8d3a8', size = 1024, glyphRotation = 0 } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = Math.round(size / 8);
@@ -102,7 +112,11 @@ function notationTexture(labels, { color = '#e8d3a8', size = 1024 } = {}) {
   ctx.textBaseline = 'middle';
   const step = canvas.width / labels.length;
   labels.forEach((label, index) => {
-    ctx.fillText(label, step * (index + 0.5), canvas.height * 0.54);
+    ctx.save();
+    ctx.translate(step * (index + 0.5), canvas.height * 0.54);
+    if (glyphRotation) ctx.rotate(glyphRotation);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
   });
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
@@ -138,10 +152,10 @@ export function buildBoard(theme, { quality = 'high', showNotation = true } = {}
     }
   }
 
-  const lightMaterial = buildMaterial(theme.board.light, { quality, textureScale: 3 });
-  const darkMaterial = buildMaterial(theme.board.dark, { quality, textureScale: 3 });
-  const lightMesh = new Mesh(mergeGeometries(lightGeometries), lightMaterial);
-  const darkMesh = new Mesh(mergeGeometries(darkGeometries), darkMaterial);
+  const lightMaterial = buildMaterial(theme.board.light, { quality, textureScale: 1 });
+  const darkMaterial = buildMaterial(theme.board.dark, { quality, textureScale: 1 });
+  const lightMesh = new Mesh(applyPlanarUV(mergeGeometries(lightGeometries)), lightMaterial);
+  const darkMesh = new Mesh(applyPlanarUV(mergeGeometries(darkGeometries)), darkMaterial);
   for (const geometry of [...lightGeometries, ...darkGeometries]) geometry.dispose();
   for (const mesh of [lightMesh, darkMesh]) {
     mesh.receiveShadow = true;
@@ -163,19 +177,27 @@ export function buildBoard(theme, { quality = 'high', showNotation = true } = {}
   disposables.push(plateGeometry, plateMaterial);
 
   // --- frame ---------------------------------------------------------------
+  // The bevel extends the extrusion by bevelThickness at BOTH ends, so the
+  // solid actually spans -bevelThickness .. depth + bevelThickness. Seating it
+  // by `depth` alone leaves the real top 0.12 higher than intended, which is
+  // enough to bury anything drawn on the frame inside it.
+  const bevelThickness = 0.12;
   const frameGeometry = new ExtrudeGeometry(frameShape(), {
     depth: FRAME_HEIGHT,
     bevelEnabled: true,
-    bevelThickness: 0.12,
+    bevelThickness,
     bevelSize: 0.12,
     bevelSegments: quality === 'low' ? 1 : 3,
     curveSegments: quality === 'low' ? 4 : 12,
   });
-  // Extrude builds on the XY plane; stand it up and seat the top just proud of
-  // the playing surface so the frame reads as a raised lip.
+  // Extrude builds on the XY plane; stand it up, then seat it so its TOP face
+  // lands at FRAME_TOP — just proud of the playing surface. Translating by the
+  // extrusion depth instead puts the top a whole frame-height in the air, which
+  // hides anything drawn on it.
   frameGeometry.rotateX(-Math.PI / 2);
-  frameGeometry.translate(0, FRAME_HEIGHT - SQUARE_THICKNESS - 0.06, 0);
-  const frameMaterial = buildMaterial(theme.board.frame, { quality, textureScale: 2 });
+  frameGeometry.translate(0, FRAME_TOP - FRAME_HEIGHT - bevelThickness, 0);
+  applyPlanarUV(frameGeometry);
+  const frameMaterial = buildMaterial(theme.board.frame, { quality, textureScale: 1 });
   const frame = new Mesh(frameGeometry, frameMaterial);
   frame.castShadow = true;
   frame.receiveShadow = true;
@@ -188,18 +210,18 @@ export function buildBoard(theme, { quality = 'high', showNotation = true } = {}
     notation = new Group();
     notation.name = 'notation';
     const inset = BOARD_SPAN / 2 + FRAME_WIDTH / 2;
-    const y = FRAME_HEIGHT - SQUARE_THICKNESS + 0.01;
+    const y = FRAME_TOP + 0.012;
     const colour = `#${(theme.board.inlay ?? 0xe8d3a8).toString(16).padStart(6, '0')}`;
 
     const edges = [
-      { id: 'files-near', labels: [...FILES], position: [0, y, inset], rotation: 0 },
-      { id: 'files-far', labels: [...FILES].reverse(), position: [0, y, -inset], rotation: Math.PI },
-      { id: 'ranks-left', labels: [...RANKS].reverse(), position: [-inset, y, 0], rotation: -Math.PI / 2 },
-      { id: 'ranks-right', labels: [...RANKS], position: [inset, y, 0], rotation: Math.PI / 2 },
+      { id: 'files-near', labels: [...FILES], position: [0, y, inset], rotation: 0, glyph: 0 },
+      { id: 'files-far', labels: [...FILES].reverse(), position: [0, y, -inset], rotation: Math.PI, glyph: 0 },
+      { id: 'ranks-left', labels: [...RANKS].reverse(), position: [-inset, y, 0], rotation: -Math.PI / 2, glyph: -Math.PI / 2 },
+      { id: 'ranks-right', labels: [...RANKS], position: [inset, y, 0], rotation: Math.PI / 2, glyph: Math.PI / 2 },
     ];
 
     for (const edge of edges) {
-      const texture = notationTexture(edge.labels, { color: colour });
+      const texture = notationTexture(edge.labels, { color: colour, glyphRotation: edge.glyph });
       const material = new MeshBasicMaterial({
         map: texture,
         transparent: true,
@@ -256,3 +278,23 @@ export function buildSquareTint() {
 }
 
 export const BOARD_UP = new Vector3(0, 1, 0);
+
+/**
+ * Replaces a geometry's UVs with a planar projection from world XZ.
+ *
+ * The squares are merged from 64 boxes, each of which carries its own 0..1 UVs.
+ * Left alone, that tiles the wood once per square and the board reads as a
+ * printed crosshatch. Projecting from position instead lets one continuous
+ * plank pattern run across the whole surface, which is what an inlaid board
+ * actually looks like.
+ */
+export function applyPlanarUV(geometry, { span = BOARD_SPAN + FRAME_WIDTH * 2, offset = 0.5 } = {}) {
+  const position = geometry.attributes.position;
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i++) {
+    uv[i * 2] = position.getX(i) / span + offset;
+    uv[i * 2 + 1] = position.getZ(i) / span + offset;
+  }
+  geometry.setAttribute('uv', new BufferAttribute(uv, 2));
+  return geometry;
+}

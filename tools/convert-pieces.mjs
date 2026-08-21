@@ -163,6 +163,27 @@ function normalizeOrigin(positions) {
   return { offset: [cx, floor, cz] };
 }
 
+/**
+ * The legacy models carry no texture coordinates, so any material map applied to
+ * them silently does nothing. These pieces are lathe-turned shapes, so a planar
+ * projection across the width paired with height along V puts a wood or marble
+ * pattern on them the way the material would actually sit on a turned blank —
+ * grain running up the piece — with no seam to hide.
+ */
+function generateUV(positions) {
+  const bbox = boundingBox(positions);
+  const width = Math.max(bbox.size[0], bbox.size[2], 0.001);
+  const height = Math.max(bbox.size[1], 0.001);
+  const uv = [];
+  for (let i = 0; i < positions.length; i += 3) {
+    uv.push(
+      Number((positions[i] / width + 0.5).toFixed(4)),
+      Number(((positions[i + 1] - bbox.min[1]) / height).toFixed(4)),
+    );
+  }
+  return uv;
+}
+
 function toBufferGeometryJson(name, { positions, norms, uvsOut, index }) {
   const attributes = {
     position: { itemSize: 3, type: 'Float32Array', array: positions, normalized: false },
@@ -201,6 +222,7 @@ for (const set of sets) {
     const built = buildIndexed(decoded, { positionDigits: 4, normalDigits: 3 });
     const { offset } = normalizeOrigin(built.positions);
     const bbox = boundingBox(built.positions);
+    if (!built.uvsOut.length) built.uvsOut = generateUV(built.positions);
     const out = toBufferGeometryJson(`${set}-${piece}`, built);
     const outPath = path.join(OUT_DIR, set, `${piece}.json`);
     const text = JSON.stringify(out);

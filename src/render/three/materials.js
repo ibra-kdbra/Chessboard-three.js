@@ -58,9 +58,9 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
         seed: surface.seed ?? 7,
         angle: surface.angle ?? 0,
       });
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.18, seed: 5 });
-      material.normalMap = grainNormalTexture({ strength: 0.9, scale: 80, seed: 13 });
-      material.normalScale.set(0.35, 0.35);
+      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.1, scale: 40, seed: 5 });
+      material.normalMap = grainNormalTexture({ strength: 0.45, scale: 26, seed: 13 });
+      material.normalScale.set(0.12, 0.12);
       break;
     }
     case 'marble': {
@@ -72,9 +72,9 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
         turbulence: surface.turbulence ?? 6,
         seed: surface.seed ?? 21,
       });
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.1, seed: 17 });
-      material.normalMap = grainNormalTexture({ strength: 0.35, scale: 40, seed: 23 });
-      material.normalScale.set(0.15, 0.15);
+      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.07, scale: 30, seed: 17 });
+      material.normalMap = grainNormalTexture({ strength: 0.2, scale: 18, seed: 23 });
+      material.normalScale.set(0.07, 0.07);
       break;
     }
     case 'metal': {
@@ -87,8 +87,8 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
     }
     case 'stone': {
       material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.3, scale: 60, seed: 37 });
-      material.normalMap = grainNormalTexture({ strength: 1.2, scale: 55, seed: 41 });
-      material.normalScale.set(0.5, 0.5);
+      material.normalMap = grainNormalTexture({ strength: 0.7, scale: 28, seed: 41 });
+      material.normalScale.set(0.22, 0.22);
       break;
     }
     default:
@@ -98,7 +98,13 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
   for (const map of [material.map, material.roughnessMap, material.normalMap]) {
     if (map) map.repeat.set(textureScale, textureScale);
   }
-  if (material.map) material.map.colorSpace = SRGBColorSpace;
+  if (material.map) {
+    material.map.colorSpace = SRGBColorSpace;
+    // three multiplies map by color. The generated maps already carry the
+    // theme's palette, so leaving `color` set applies it a second time and the
+    // surface comes out roughly twice as dark as the theme asked for.
+    material.color.set(surface.tint ?? 0xffffff);
+  }
 
   return material;
 }
