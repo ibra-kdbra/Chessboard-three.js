@@ -143,9 +143,17 @@ test('the game survives a reload', async ({ page }) => {
   await page.waitForFunction(() => window.__app?.board?.ready === true, { timeout: 45_000 });
 
   const after = await page.evaluate(() => window.__app.session.state.pgn());
-  // The move text must survive; headers carry a fresh date and need not.
-  const moves = (pgn) => pgn.split(/\n\n/).pop().trim();
-  expect(moves(after)).toBe(moves(before));
+  // The saved moves must survive. Not an exact match: it is the computer's turn
+  // in this position, and a restored game prompts it — so play legitimately
+  // continues past what was saved.
+  const moves = (pgn) =>
+    pgn
+      .split(/\n\n/)
+      .pop()
+      .trim()
+      .replace(/\s+\*$/, '');
+  expect(moves(after).startsWith(moves(before))).toBe(true);
+  expect(moves(before).length).toBeGreaterThan(0);
   expect(errors.filter((e) => !e.includes('favicon'))).toEqual([]);
 });
 

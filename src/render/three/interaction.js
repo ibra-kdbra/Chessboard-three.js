@@ -86,6 +86,14 @@ export class BoardInteraction {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(this.pointer, this.options.camera);
+
+    // Pieces stand up off the board, so from any angle but straight down their
+    // upper half covers a square behind them. Test the pieces first: clicking a
+    // king's crown should pick up the king, not deselect onto the square it
+    // happens to overlap.
+    const onPiece = this.options.pieceUnderRay?.(this.raycaster);
+    if (onPiece) return onPiece;
+
     const hit = new Vector3();
     if (!this.raycaster.ray.intersectPlane(this.boardPlane, hit)) return null;
     return worldToSquare(hit.x, hit.z, this.options.getOrientation());

@@ -19,6 +19,7 @@ import {
   CAMERA_TARGET,
   FrameBudget,
   QUALITY_ORDER,
+  QUALITY_TIERS,
   createScene,
   detectQuality,
   fitCameraToBoard,
@@ -148,6 +149,7 @@ export class Board3D extends Emitter {
       camera: this.view.camera,
       getOrientation: () => this._orientation,
       pieceAt: (square) => this.pieces.get(square) ?? null,
+      pieceUnderRay: (raycaster) => this.#squareUnderRay(raycaster),
       canPickUp: (square) => this.config.interactive && this.pieces.has(square),
       onHover: (square) => {
         this.#hover = square;
@@ -182,14 +184,35 @@ export class Board3D extends Emitter {
   #highlightState = {};
 
   async #loadPieces() {
-    const assets = await loadPieceSet(this.config.pieceSet, { basePath: this.config.assetPath });
-    if (this.destroyed) return;
+    const wanted = this.config.pieceSet;
+    const assets = await loadPieceSet(wanted, { basePath: this.config.assetPath });
+    if (this.destroyed || this.config.pieceSet !== wanted) return;
     this.assets = assets;
     this.factory = new PieceFactory(assets, this.theme, { quality: this.config.quality });
     // Anything set before the geometry arrived is drawn now.
     const pending = this.position;
     this.position = {};
     this.#drawInstant(pending);
+  }
+
+  /**
+   * The square of the topmost piece the ray passes through, if any.
+   *
+   * Only the piece meshes are tested — 32 objects at most, and only the ones
+   * currently on the board — so this stays far cheaper than the original
+   * widget, which walked the whole scene graph 64 times per mouse move.
+   */
+  #squareUnderRay(raycaster) {
+    const meshes = [];
+    for (const group of this.pieces.values()) {
+      if (group.userData.mesh) meshes.push(group.userData.mesh);
+    }
+    const hits = raycaster.intersectObjects(meshes, false);
+    if (!hits.length) return null;
+    for (const [square, group] of this.pieces) {
+      if (group.userData.mesh === hits[0].object) return square;
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------ pieces
@@ -230,10 +253,9 @@ export class Board3D extends Emitter {
     this.#dirty = true;
   }
 
-  #movePiece(from, to, { duration, arc, ease, delay = 0 }) {
-    const group = this.pieces.get(from);
+  #movePiece(group, from, to, { duration, arc, ease, delay = 0 }) {
     if (!group) return Promise.resolve();
-    this.pieces.delete(from);
+    if (this.pieces.get(from) === group) this.pieces.delete(from);
     // Claim the destination now so a second animation cannot target it too.
     this.pieces.set(to, group);
     group.userData.square = to;
@@ -374,12 +396,19 @@ export class Board3D extends Emitter {
       if (this.pieces.get(square) === group) this.pieces.delete(square);
     }
 
-    for (const step of plan) {
-      if (step.type === 'move') {
-        const from = squareToWorld(step.source, this._orientation);
-        const to = squareToWorld(step.destination, this._orientation);
-        jobs.push(this.#movePiece(step.source, step.destination, movePlan(step.piece, from, to)));
-      }
+    // Resolve every mover before any of them claims a destination: within one
+    // plan a piece can move onto a square another piece is leaving, and reading
+    // the index lazily sent the wrong mesh.
+    const movers = plan
+      .filter((step) => step.type === 'move')
+      .map((step) => ({ step, group: this.pieces.get(step.source) }));
+    for (const { step, group } of movers) {
+      if (!group) continue;
+      const from = squareToWorld(step.source, this._orientation);
+      const to = squareToWorld(step.destination, this._orientation);
+      jobs.push(
+        this.#movePiece(group, step.source, step.destination, movePlan(step.piece, from, to)),
+      );
     }
     for (const { group } of doomed) {
       jobs.push(this.#removePiece(group, { delay: clearDelay }));
@@ -532,9 +561,11 @@ export class Board3D extends Emitter {
 
   async setPieceSet(set) {
     if (set === this.config.pieceSet) return;
-    const assets = await loadPieceSet(set, { basePath: this.config.assetPath });
-    if (this.destroyed) return;
+    // Claim the set before awaiting, so the initial load knows it has been
+    // superseded — otherwise it lands last and pins the board to the old set.
     this.config.pieceSet = set;
+    const assets = await loadPieceSet(set, { basePath: this.config.assetPath });
+    if (this.destroyed || this.config.pieceSet !== set) return;
     this.assets = assets;
     this.factory?.disposeShared();
     this.factory = new PieceFactory(assets, this.theme, { quality: this.config.quality });
@@ -709,13 +740,20 @@ export class Board3D extends Emitter {
     if (index <= 0) return;
     const next = QUALITY_ORDER[index - 1];
     this.config.quality = next;
+    this.view.quality = next;
+    this.view.tier = QUALITY_TIERS[next];
     this.emit('quality', next);
-    // Shadows and post are the expensive part; drop them without a full rebuild.
-    const tier = this.view.tier;
+
+    // Shadows and post are expensive, but so is every pixel: a phone that
+    // tripped the budget kept rendering at 2x and tripped it again seconds
+    // later, because the resolution never came down.
     this.view.renderer.shadowMap.enabled = next !== 'low';
     this.view.lights.key.castShadow = next !== 'low';
     if (this.view.bloomPass) this.view.bloomPass.enabled = next !== 'low';
-    this.view.renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, tier.maxPixelRatio));
+    this.view.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio ?? 1, this.view.tier.maxPixelRatio),
+    );
+    this.view.resize({ retilt: false });
     this.#dirty = true;
   }
 

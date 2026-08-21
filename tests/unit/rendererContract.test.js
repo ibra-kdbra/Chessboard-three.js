@@ -29,3 +29,38 @@ describe('BoardRenderer contract', () => {
     expect(() => assertRendererContract(stub)).toThrow(/capabilities/);
   });
 });
+
+describe('Ticker pause and resume', () => {
+  it('resumes a tween where it left off rather than from the start', async () => {
+    const { Ticker, easing } = await import('../../src/render/three/animation.js');
+    const ticker = new Ticker();
+    const seen = [];
+    ticker.add({ duration: 100, ease: easing.linear, onUpdate: (t) => seen.push(t) });
+
+    ticker.update(0);
+    ticker.update(40);
+    ticker.pause(40);
+    // Time passes while paused — a backgrounded tab, or an open modal.
+    ticker.update(5000);
+    ticker.resume(5000);
+    ticker.update(5020);
+
+    // Without the rebase this jumped straight to 1 (or back to 0).
+    const last = seen.at(-1);
+    expect(last).toBeGreaterThan(0.4);
+    expect(last).toBeLessThan(0.8);
+  });
+
+  it('does not advance while paused', async () => {
+    const { Ticker, easing } = await import('../../src/render/three/animation.js');
+    const ticker = new Ticker();
+    let calls = 0;
+    ticker.add({ duration: 100, ease: easing.linear, onUpdate: () => calls++ });
+
+    ticker.update(0);
+    const before = calls;
+    ticker.pause(0);
+    ticker.update(50);
+    expect(calls).toBe(before);
+  });
+});

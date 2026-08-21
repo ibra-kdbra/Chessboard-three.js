@@ -139,16 +139,24 @@ export class Ticker {
     return changed;
   }
 
-  pause() {
+  /** Freezes every tween, remembering how far each had got. */
+  pause(now) {
+    if (this.#paused) return;
     this.#paused = true;
+    for (const tween of this.#tweens) {
+      tween.elapsedAtPause = tween.startedAt === null ? 0 : Math.max(0, now - tween.startedAt);
+    }
   }
 
   resume(now) {
     if (!this.#paused) return;
     this.#paused = false;
-    // Shift start times forward so a pause does not fast-forward the tweens.
+    // Rebase each start time so a pause neither fast-forwards a tween nor —
+    // as it did before, with elapsedAtPause never assigned — replays it from
+    // the beginning.
     for (const tween of this.#tweens) {
       if (tween.startedAt !== null) tween.startedAt = now - (tween.elapsedAtPause ?? 0);
+      tween.elapsedAtPause = undefined;
     }
   }
 
