@@ -1,0 +1,365 @@
+{
+  "sets": [
+    "classic",
+    "iconic",
+    "minions"
+  ],
+  "pieces": [
+    "K",
+    "Q",
+    "R",
+    "B",
+    "N",
+    "P"
+  ],
+  "report": {
+    "classic": {
+      "K": {
+        "triangles": 1372,
+        "sourceVertices": 688,
+        "weldedVertices": 688,
+        "height": 3.023,
+        "footprint": [
+          1.5,
+          1.5
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 61079,
+          "to": 40767
+        }
+      },
+      "Q": {
+        "triangles": 1488,
+        "sourceVertices": 746,
+        "weldedVertices": 746,
+        "height": 2.944,
+        "footprint": [
+          1.5,
+          1.5
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 66586,
+          "to": 44180
+        }
+      },
+      "R": {
+        "triangles": 904,
+        "sourceVertices": 454,
+        "weldedVertices": 454,
+        "height": 2.238,
+        "footprint": [
+          1.5,
+          1.5
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 40120,
+          "to": 26824
+        }
+      },
+      "B": {
+        "triangles": 1324,
+        "sourceVertices": 664,
+        "weldedVertices": 664,
+        "height": 3.035,
+        "footprint": [
+          1.5,
+          1.478
+        ],
+        "recenteredBy": [
+          0.001,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 59308,
+          "to": 39729
+        }
+      },
+      "N": {
+        "triangles": 2152,
+        "sourceVertices": 1078,
+        "weldedVertices": 1078,
+        "height": 2.555,
+        "footprint": [
+          1.521,
+          1.498
+        ],
+        "recenteredBy": [
+          0.0005,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 97750,
+          "to": 67705
+        }
+      },
+      "P": {
+        "triangles": 712,
+        "sourceVertices": 358,
+        "weldedVertices": 358,
+        "height": 1.833,
+        "footprint": [
+          1.2,
+          1.2
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 31100,
+          "to": 20537
+        }
+      }
+    },
+    "iconic": {
+      "K": {
+        "triangles": 1552,
+        "sourceVertices": 776,
+        "weldedVertices": 774,
+        "height": 1.698,
+        "footprint": [
+          1.606,
+          1.604
+        ],
+        "recenteredBy": [
+          0,
+          0.002,
+          -0.001
+        ],
+        "bytes": {
+          "from": 55506,
+          "to": 46093
+        }
+      },
+      "Q": {
+        "triangles": 1324,
+        "sourceVertices": 674,
+        "weldedVertices": 621,
+        "height": 1.363,
+        "footprint": [
+          1.771,
+          1.771
+        ],
+        "recenteredBy": [
+          -0.0005,
+          0.001,
+          0.0275
+        ],
+        "bytes": {
+          "from": 46712,
+          "to": 39790
+        }
+      },
+      "R": {
+        "triangles": 1056,
+        "sourceVertices": 530,
+        "weldedVertices": 530,
+        "height": 1.497,
+        "footprint": [
+          1.188,
+          1.189
+        ],
+        "recenteredBy": [
+          0.028,
+          0.009,
+          -0.0155
+        ],
+        "bytes": {
+          "from": 36785,
+          "to": 32262
+        }
+      },
+      "B": {
+        "triangles": 1448,
+        "sourceVertices": 988,
+        "weldedVertices": 985,
+        "height": 1.624,
+        "footprint": [
+          1.216,
+          1.214
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 67063,
+          "to": 52283
+        }
+      },
+      "N": {
+        "triangles": 1663,
+        "sourceVertices": 850,
+        "weldedVertices": 850,
+        "height": 1.571,
+        "footprint": [
+          1.388,
+          1.32
+        ],
+        "recenteredBy": [
+          -0.034,
+          0.003,
+          0
+        ],
+        "bytes": {
+          "from": 70903,
+          "to": 51445
+        }
+      },
+      "P": {
+        "triangles": 1152,
+        "sourceVertices": 578,
+        "weldedVertices": 578,
+        "height": 1.362,
+        "footprint": [
+          1.052,
+          1.052
+        ],
+        "recenteredBy": [
+          0,
+          0,
+          0
+        ],
+        "bytes": {
+          "from": 41285,
+          "to": 34437
+        }
+      }
+    },
+    "minions": {
+      "K": {
+        "triangles": 3849,
+        "sourceVertices": 1882,
+        "weldedVertices": 1882,
+        "height": 3.346,
+        "footprint": [
+          1.03,
+          1.134
+        ],
+        "recenteredBy": [
+          0.024,
+          0.001,
+          -0.195
+        ],
+        "bytes": {
+          "from": 184322,
+          "to": 122257
+        }
+      },
+      "Q": {
+        "triangles": 3588,
+        "sourceVertices": 1705,
+        "weldedVertices": 1705,
+        "height": 2.861,
+        "footprint": [
+          1.144,
+          1.016
+        ],
+        "recenteredBy": [
+          0.004,
+          0.001,
+          -0.279
+        ],
+        "bytes": {
+          "from": 169653,
+          "to": 111506
+        }
+      },
+      "R": {
+        "triangles": 3984,
+        "sourceVertices": 1905,
+        "weldedVertices": 1905,
+        "height": 2.471,
+        "footprint": [
+          1.121,
+          1.007
+        ],
+        "recenteredBy": [
+          0.0025,
+          0,
+          -0.0035
+        ],
+        "bytes": {
+          "from": 188735,
+          "to": 128644
+        }
+      },
+      "B": {
+        "triangles": 3634,
+        "sourceVertices": 1714,
+        "weldedVertices": 1714,
+        "height": 2.729,
+        "footprint": [
+          1.01,
+          1.237
+        ],
+        "recenteredBy": [
+          0,
+          0.001,
+          -0.1935
+        ],
+        "bytes": {
+          "from": 171382,
+          "to": 113937
+        }
+      },
+      "N": {
+        "triangles": 3488,
+        "sourceVertices": 1706,
+        "weldedVertices": 1706,
+        "height": 2.253,
+        "footprint": [
+          1.119,
+          0.999
+        ],
+        "recenteredBy": [
+          0.0005,
+          0.001,
+          -0.2495
+        ],
+        "bytes": {
+          "from": 165704,
+          "to": 113359
+        }
+      },
+      "P": {
+        "triangles": 3230,
+        "sourceVertices": 1579,
+        "weldedVertices": 1579,
+        "height": 1.714,
+        "footprint": [
+          1.119,
+          0.995
+        ],
+        "recenteredBy": [
+          0.0035,
+          0,
+          -0.2705
+        ],
+        "bytes": {
+          "from": 152706,
+          "to": 104591
+        }
+      }
+    }
+  }
+}

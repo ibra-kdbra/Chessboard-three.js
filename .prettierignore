@@ -1,0 +1,9 @@
+vendor/
+node_modules/
+legacy/
+assets/
+img/
+blend/
+package-lock.json
+test-results/
+playwright-report/

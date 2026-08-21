@@ -1,0 +1,21 @@
+{
+  "generatedBy": "tools/vendor.mjs",
+  "packages": {
+    "three": "0.185.1",
+    "chess.js": "1.4.0"
+  },
+  "threeBuild": "minified",
+  "addonEntries": [
+    "controls/OrbitControls.js",
+    "environments/RoomEnvironment.js",
+    "postprocessing/EffectComposer.js",
+    "postprocessing/RenderPass.js",
+    "postprocessing/ShaderPass.js",
+    "postprocessing/OutputPass.js",
+    "postprocessing/UnrealBloomPass.js",
+    "postprocessing/SMAAPass.js",
+    "postprocessing/SSAOPass.js",
+    "utils/BufferGeometryUtils.js"
+  ],
+  "addonFileCount": 18
+}
