@@ -21,7 +21,13 @@ export const TIME_CONTROLS = Object.freeze([
   { id: 'rapid-10+0', label: '10 + 0', category: 'rapid', initial: 600_000, increment: 0 },
   { id: 'rapid-10+5', label: '10 + 5', category: 'rapid', initial: 600_000, increment: 5_000 },
   { id: 'rapid-15+10', label: '15 + 10', category: 'rapid', initial: 900_000, increment: 10_000 },
-  { id: 'classical-30+20', label: '30 + 20', category: 'classical', initial: 1_800_000, increment: 20_000 },
+  {
+    id: 'classical-30+20',
+    label: '30 + 20',
+    category: 'classical',
+    initial: 1_800_000,
+    increment: 20_000,
+  },
 ]);
 
 export function timeControlById(id) {
@@ -155,7 +161,10 @@ export class Clock extends Emitter {
       initial: this.initial,
       increment: this.increment,
       delayMode: this.delayMode,
-      remaining: { ...this.remaining, [this.running ?? WHITE]: this.timeLeft(this.running ?? WHITE) },
+      remaining: {
+        ...this.remaining,
+        [this.running ?? WHITE]: this.timeLeft(this.running ?? WHITE),
+      },
       flagged: this.flagged,
     };
   }

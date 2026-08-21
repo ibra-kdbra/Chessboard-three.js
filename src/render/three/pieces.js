@@ -32,8 +32,16 @@ export const PIECE_CODES = Object.freeze(['K', 'Q', 'R', 'B', 'N', 'P']);
 
 /** Pieces are scaled to roughly this tall, unless their footprint objects. */
 const TARGET_KING_HEIGHT = 3.0;
-/** ...and never wider than this, so nothing spills onto a neighbouring square. */
-const MAX_FOOTPRINT = SQUARE_SIZE * 0.88;
+/**
+ * ...and no wider than this.
+ *
+ * Measured against the set's SECOND widest piece, not its widest. The iconic
+ * set has one outlier — a queen wider than she is tall — and constraining on
+ * her alone shrank the whole set to 56% of the height the others render at.
+ * Letting a single piece overhang its square slightly is a much smaller
+ * problem than a set that looks like it belongs to a different game.
+ */
+const MAX_FOOTPRINT = SQUARE_SIZE * 0.95;
 
 const geometryCache = new Map();
 const manifestCache = { promise: null, data: null };
@@ -62,10 +70,11 @@ export function setScale(manifest, set) {
   const report = manifest?.report?.[set];
   if (!report) return 1;
   const kingHeight = report.K?.height ?? TARGET_KING_HEIGHT;
-  const widest = Math.max(
-    ...PIECE_CODES.map((code) => Math.max(...(report[code]?.footprint ?? [1, 1]))),
-  );
-  return Math.min(TARGET_KING_HEIGHT / kingHeight, MAX_FOOTPRINT / widest);
+  const footprints = PIECE_CODES.map((code) =>
+    Math.max(...(report[code]?.footprint ?? [1, 1])),
+  ).sort((a, b) => b - a);
+  const constraining = footprints[1] ?? footprints[0];
+  return Math.min(TARGET_KING_HEIGHT / kingHeight, MAX_FOOTPRINT / constraining);
 }
 
 /**

@@ -241,7 +241,10 @@ for (const set of sets) {
   }
 }
 
-await writeFile(path.join(OUT_DIR, 'manifest.json'), JSON.stringify({ sets, pieces: PIECES, report }, null, 2) + '\n');
+await writeFile(
+  path.join(OUT_DIR, 'manifest.json'),
+  JSON.stringify({ sets, pieces: PIECES, report }, null, 2) + '\n',
+);
 
 for (const set of sets) {
   const totalFrom = PIECES.reduce((s, p) => s + report[set][p].bytes.from, 0);

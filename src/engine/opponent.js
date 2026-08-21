@@ -13,25 +13,136 @@
  * plausible alternatives — mistakes that look like mistakes a person makes.
  */
 import { scoreMoves } from '../core/staticEval.js';
+
+const toMove = (move) => ({ from: move.from, to: move.to, promotion: move.promotion });
 import { pickBookMove } from '../core/openings.js';
 import { parseUciMove } from './uciEngine.js';
 
 /**
- * `blunderRate` is the chance of not playing the engine's move; `blunderBand`
- * is how many centipawns worse the substitute may be. `bookPlies` is how long
- * the level plays from the opening book, which mostly buys opening variety.
+ * The ladder.
+ *
+ * `temperature` is in centipawns and drives a softmax over the candidate moves:
+ * at 0 the best move is always played, and as it rises, moves that are only
+ * slightly worse become nearly as likely. This is what makes the rungs feel
+ * graded — a threshold-and-coin-flip model lurches, because every mistake it
+ * makes is drawn from the same flat band.
+ *
+ * `catastropheRate` is a separate channel for the other kind of beginner error:
+ * not a slightly inferior move but a piece left hanging. Softmax alone almost
+ * never produces those, and their absence is what makes weak engines feel
+ * uncannily solid.
  */
 export const DIFFICULTY_LEVELS = Object.freeze([
-  { level: 1, name: 'Novice', approxElo: 600, movetime: 60, depth: 1, blunderRate: 0.5, blunderBand: 900, bookPlies: 0, minThinkMs: 350 },
-  { level: 2, name: 'Casual', approxElo: 800, movetime: 100, depth: 2, blunderRate: 0.38, blunderBand: 700, bookPlies: 2, minThinkMs: 350 },
-  { level: 3, name: 'Club Beginner', approxElo: 1000, movetime: 150, depth: 3, blunderRate: 0.28, blunderBand: 500, bookPlies: 4, minThinkMs: 400 },
-  { level: 4, name: 'Club Player', approxElo: 1200, movetime: 250, depth: 4, blunderRate: 0.2, blunderBand: 350, bookPlies: 6, minThinkMs: 400 },
-  { level: 5, name: 'Intermediate', approxElo: 1400, movetime: 400, depth: 6, blunderRate: 0.13, blunderBand: 250, bookPlies: 8, minThinkMs: 450 },
-  { level: 6, name: 'Advanced', approxElo: 1600, movetime: 700, depth: 8, blunderRate: 0.08, blunderBand: 180, bookPlies: 10, minThinkMs: 450 },
-  { level: 7, name: 'Expert', approxElo: 1800, movetime: 1100, depth: 10, blunderRate: 0.04, blunderBand: 120, bookPlies: 12, minThinkMs: 500 },
-  { level: 8, name: 'Candidate Master', approxElo: 2000, movetime: 1800, depth: 12, blunderRate: 0.02, blunderBand: 80, bookPlies: 14, minThinkMs: 500 },
-  { level: 9, name: 'Master', approxElo: 2200, movetime: 3000, depth: null, blunderRate: 0.005, blunderBand: 50, bookPlies: 16, minThinkMs: 500 },
-  { level: 10, name: 'Full Strength', approxElo: null, movetime: 5000, depth: null, blunderRate: 0, blunderBand: 0, bookPlies: 20, minThinkMs: 0 },
+  {
+    level: 1,
+    name: 'Novice',
+    approxElo: 600,
+    movetime: 60,
+    depth: 1,
+    temperature: 420,
+    catastropheRate: 0.3,
+    bookPlies: 0,
+    minThinkMs: 350,
+  },
+  {
+    level: 2,
+    name: 'Casual',
+    approxElo: 800,
+    movetime: 100,
+    depth: 2,
+    temperature: 300,
+    catastropheRate: 0.2,
+    bookPlies: 2,
+    minThinkMs: 350,
+  },
+  {
+    level: 3,
+    name: 'Club Beginner',
+    approxElo: 1000,
+    movetime: 150,
+    depth: 3,
+    temperature: 210,
+    catastropheRate: 0.12,
+    bookPlies: 4,
+    minThinkMs: 400,
+  },
+  {
+    level: 4,
+    name: 'Club Player',
+    approxElo: 1200,
+    movetime: 250,
+    depth: 4,
+    temperature: 150,
+    catastropheRate: 0.07,
+    bookPlies: 6,
+    minThinkMs: 400,
+  },
+  {
+    level: 5,
+    name: 'Intermediate',
+    approxElo: 1400,
+    movetime: 400,
+    depth: 6,
+    temperature: 100,
+    catastropheRate: 0.035,
+    bookPlies: 8,
+    minThinkMs: 450,
+  },
+  {
+    level: 6,
+    name: 'Advanced',
+    approxElo: 1600,
+    movetime: 700,
+    depth: 8,
+    temperature: 65,
+    catastropheRate: 0.015,
+    bookPlies: 10,
+    minThinkMs: 450,
+  },
+  {
+    level: 7,
+    name: 'Expert',
+    approxElo: 1800,
+    movetime: 1100,
+    depth: 10,
+    temperature: 40,
+    catastropheRate: 0.006,
+    bookPlies: 12,
+    minThinkMs: 500,
+  },
+  {
+    level: 8,
+    name: 'Candidate Master',
+    approxElo: 2000,
+    movetime: 1800,
+    depth: 12,
+    temperature: 22,
+    catastropheRate: 0.002,
+    bookPlies: 14,
+    minThinkMs: 500,
+  },
+  {
+    level: 9,
+    name: 'Master',
+    approxElo: 2200,
+    movetime: 3000,
+    depth: null,
+    temperature: 10,
+    catastropheRate: 0,
+    bookPlies: 16,
+    minThinkMs: 500,
+  },
+  {
+    level: 10,
+    name: 'Full Strength',
+    approxElo: null,
+    movetime: 5000,
+    depth: null,
+    temperature: 0,
+    catastropheRate: 0,
+    bookPlies: 20,
+    minThinkMs: 0,
+  },
 ]);
 
 export function difficultyByLevel(level) {
@@ -40,15 +151,45 @@ export function difficultyByLevel(level) {
 
 const pick = (list, random) => list[Math.floor(random() * list.length)];
 
+/**
+ * Draws one entry from `scored` with probability proportional to
+ * `exp(score / temperature)`.
+ *
+ * Scores are centipawns from the mover's point of view, so the temperature is
+ * also in centipawns and reads directly: at 100, a move 100cp worse is about a
+ * third as likely as the best one; at 20 it is essentially never played.
+ *
+ * @param {Array<{ score: number }>} scored best first
+ * @param {number} temperature centipawns; 0 means always take the best
+ * @param {() => number} random
+ */
+export function softmaxPick(scored, temperature, random = Math.random) {
+  if (!scored.length) return null;
+  if (temperature <= 0) return scored[0];
+
+  // Subtract the max before exponentiating, or a large positive score overflows.
+  const best = scored[0].score;
+  const weights = scored.map((entry) => Math.exp((entry.score - best) / temperature));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let roll = random() * total;
+  for (const [index, weight] of weights.entries()) {
+    roll -= weight;
+    if (roll <= 0) return scored[index];
+  }
+  return scored[0];
+}
+
 export class Opponent {
   /**
    * @param {{ engine: import('./uciEngine.js').UciEngine, level?: number,
-   *           random?: () => number, personality?: string }} options
+   *           random?: () => number, pace?: number }} options
+   *   `pace` scales the deliberate pause before an easy level replies — 1 for
+   *   play, 0 to remove it (tests, and engine-vs-engine).
    */
-  constructor({ engine, level = 5, random = Math.random, personality = 'balanced' }) {
+  constructor({ engine, level = 5, random = Math.random, pace = 1 }) {
     this.engine = engine;
     this.random = random;
-    this.personality = personality;
+    this.pace = pace;
     this.setLevel(level);
   }
 
@@ -91,7 +232,7 @@ export class Opponent {
     if (sanHistory.length < settings.bookPlies) {
       const chosen = pickBookMove(sanHistory, this.random);
       if (chosen) {
-        await this.#pause(settings.minThinkMs, startedAt, signal);
+        await this.#pause(settings.minThinkMs * this.pace, startedAt, signal);
         return {
           move: null,
           san: chosen.san,
@@ -128,21 +269,43 @@ export class Opponent {
     }
     const best = parseUciMove(result.bestmove);
     if (!best) {
-      return { move: null, san: null, source: 'none', evaluation: null, info: result.info, elapsedMs: performance.now() - startedAt };
+      return {
+        move: null,
+        san: null,
+        source: 'none',
+        evaluation: null,
+        info: result.info,
+        elapsedMs: performance.now() - startedAt,
+      };
     }
 
-    // 3. Optionally err on purpose.
+    // 3. Optionally err on purpose. Skipped when the engine is already playing
+    //    below strength for us — two weakening layers stack unpredictably.
     let move = best;
     let source = 'engine';
-    if (!this.usesNativeStrength && settings.blunderRate > 0 && this.random() < settings.blunderRate) {
-      const alternative = this.#pickPlausibleMistake(fen, result.bestmove);
-      if (alternative) {
-        move = alternative;
-        source = 'weakened';
+    // Native strength limiting and our own sampling COMPOSE rather than
+    // exclude: Skill Level alone makes Stockfish rung 3 a different opponent
+    // from Lozza rung 3, which is exactly the inconsistency the ladder exists
+    // to remove. When the engine is already holding back, sample more gently.
+    const temperature = this.usesNativeStrength
+      ? settings.temperature * 0.35
+      : settings.temperature;
+    const catastropheRate = this.usesNativeStrength
+      ? settings.catastropheRate * 0.4
+      : settings.catastropheRate;
+
+    if (temperature > 0 || catastropheRate > 0) {
+      const alternative = this.#chooseHumanlyImperfectMove(fen, result, {
+        temperature,
+        catastropheRate,
+      });
+      if (alternative && alternative.uci !== result.bestmove) {
+        move = alternative.move;
+        source = alternative.source;
       }
     }
 
-    await this.#pause(settings.minThinkMs, startedAt, signal);
+    await this.#pause(settings.minThinkMs * this.pace, startedAt, signal);
     return {
       move,
       san: null,
@@ -155,32 +318,41 @@ export class Opponent {
   }
 
   /**
-   * Picks a move that is worse than best but not absurd: still inside the
-   * level's band, and never a move that simply throws a piece away for nothing
-   * unless the band is wide enough that a beginner plausibly would.
+   * Chooses the move this level actually plays.
+   *
+   * Candidates come from the engine's MultiPV lines where the engine provides
+   * them and from the static evaluation otherwise, but the selection is the
+   * same either way — which is what keeps the ladder consistent when the player
+   * switches engines mid-game.
    */
-  #pickPlausibleMistake(fen, bestUci) {
+  #chooseHumanlyImperfectMove(fen, result, { temperature, catastropheRate }) {
     const scored = scoreMoves(fen);
     if (scored.length < 2) return null;
-    const bestScore = scored[0].score;
-    const band = this.settings.blunderBand;
+    const uciOf = (move) => `${move.from}${move.to}${move.promotion ?? ''}`;
 
-    const candidates = scored.filter((entry) => {
-      const uci = `${entry.move.from}${entry.move.to}${entry.move.promotion ?? ''}`;
-      if (uci === bestUci) return false;
-      const loss = bestScore - entry.score;
-      // Slightly-worse moves are the most human; require a real drop so the
-      // "mistake" is actually visible, but stay inside the level's ceiling.
-      return loss > 20 && loss <= band;
-    });
+    // The engine knows better than the static evaluation, so anchor its choice
+    // at the top of the list rather than letting the static score demote it.
+    const anchored = scored.map((entry) =>
+      uciOf(entry.move) === result.bestmove
+        ? { ...entry, score: Math.max(entry.score, scored[0].score) }
+        : entry,
+    );
+    anchored.sort((a, b) => b.score - a.score);
 
-    const chosen = candidates.length ? pick(candidates, this.random) : null;
+    // The catastrophe channel: occasionally play something that really does
+    // drop material, which softmax on its own almost never produces.
+    if (catastropheRate > 0 && this.random() < catastropheRate) {
+      const best = anchored[0].score;
+      const howlers = anchored.filter((entry) => best - entry.score > 150);
+      if (howlers.length) {
+        const chosen = pick(howlers, this.random);
+        return { move: toMove(chosen.move), uci: uciOf(chosen.move), source: 'blunder' };
+      }
+    }
+
+    const chosen = softmaxPick(anchored, temperature, this.random);
     if (!chosen) return null;
-    return {
-      from: chosen.move.from,
-      to: chosen.move.to,
-      promotion: chosen.move.promotion,
-    };
+    return { move: toMove(chosen.move), uci: uciOf(chosen.move), source: 'weakened' };
   }
 
   /** Keeps instant replies from feeling like a lookup table. */
@@ -189,10 +361,14 @@ export class Opponent {
     if (remaining <= 0) return Promise.resolve();
     return new Promise((resolve) => {
       const timer = setTimeout(resolve, remaining);
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer);
-        resolve();
-      }, { once: true });
+      signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
     });
   }
 }

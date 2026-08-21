@@ -40,9 +40,7 @@ export const SEVEN_TAG_ROSTER = Object.freeze([
 
 function formatEval(evaluation) {
   if (!evaluation) return null;
-  return evaluation.type === 'mate'
-    ? `#${evaluation.value}`
-    : (evaluation.value / 100).toFixed(2);
+  return evaluation.type === 'mate' ? `#${evaluation.value}` : (evaluation.value / 100).toFixed(2);
 }
 
 function formatClock(ms) {
@@ -71,7 +69,8 @@ export function writePgn(tree, options = {}) {
 
   const tags = { ...tree.headers, ...headers, Result: result };
   for (const tag of SEVEN_TAG_ROSTER) {
-    if (tags[tag] === undefined) tags[tag] = tag === 'Date' ? '????.??.??' : tag === 'Result' ? '*' : '?';
+    if (tags[tag] === undefined)
+      tags[tag] = tag === 'Date' ? '????.??.??' : tag === 'Result' ? '*' : '?';
   }
   if (tree.startFen !== START_FEN) {
     tags.SetUp = '1';
@@ -80,7 +79,9 @@ export function writePgn(tree, options = {}) {
 
   const ordered = [
     ...SEVEN_TAG_ROSTER.filter((tag) => tags[tag] !== undefined),
-    ...Object.keys(tags).filter((tag) => !SEVEN_TAG_ROSTER.includes(tag)).sort(),
+    ...Object.keys(tags)
+      .filter((tag) => !SEVEN_TAG_ROSTER.includes(tag))
+      .sort(),
   ];
   const header = ordered
     .map((tag) => `[${tag} "${String(tags[tag]).replace(/["\\]/g, '\\$&')}"]`)
@@ -113,7 +114,11 @@ export function writePgn(tree, options = {}) {
     while (node) {
       emitNode(node, forceNumber);
       forceNumber = false;
-      if (includeVariations && node.parent.children.length > 1 && node === node.parent.children[0]) {
+      if (
+        includeVariations &&
+        node.parent.children.length > 1 &&
+        node === node.parent.children[0]
+      ) {
         for (const sibling of node.parent.children.slice(1)) {
           tokens.push('(');
           emitLine(sibling, sibling.color === 'b');
@@ -125,7 +130,8 @@ export function writePgn(tree, options = {}) {
     }
   };
 
-  if (tree.root.children.length) emitLine(tree.root.children[0], tree.root.children[0].color === 'b');
+  if (tree.root.children.length)
+    emitLine(tree.root.children[0], tree.root.children[0].color === 'b');
   tokens.push(result);
 
   // Wrap without ever splitting a brace comment across the fold.
@@ -145,10 +151,12 @@ export function writePgn(tree, options = {}) {
   return `${header}\n\n${body}\n`;
 }
 
-// Order matters: a brace comment may contain `[%eval ...]`, so comments are
-// matched before tag pairs, and the game result before a bare SAN-ish token.
+// Order matters, twice over. A brace comment may contain `[%eval ...]`, so
+// comments are matched before tag pairs. And the game result is matched before
+// the SAN token, which is what lets SAN accept a leading `0` — needed for the
+// `0-0` spelling of castling — without swallowing `0-1`.
 const TOKEN_RE =
-  /(\{[^}]*\})|(\[[^\]]*\])|(\()|(\))|(\$\d+)|(\d+\.(?:\.\.)?)|(1-0|0-1|1\/2-1\/2|\*)|([OoA-Za-z][A-Za-z0-9=+#!?-]*)/g;
+  /(\{[^}]*\})|(\[[^\]]*\])|(\()|(\))|(\$\d+)|(\d+\.(?:\.\.)?)|(1-0|0-1|1\/2-1\/2|\*)|([0OoA-Za-z][-A-Za-z0-9=+#!?]*)/g;
 
 function parseHeaders(text) {
   const headers = {};
@@ -246,7 +254,10 @@ export function parsePgn(text) {
     }
     if (!san) continue;
 
-    const cleaned = san.replace(/[!?]+$/, '').replace(/^0-0-0$/i, 'O-O-O').replace(/^0-0$/i, 'O-O');
+    const cleaned = san
+      .replace(/[!?]+$/, '')
+      .replace(/^0-0-0$/i, 'O-O-O')
+      .replace(/^0-0$/i, 'O-O');
     if (/^(1-0|0-1)$/.test(cleaned)) continue;
     let played;
     try {

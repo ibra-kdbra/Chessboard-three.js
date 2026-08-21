@@ -58,7 +58,12 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
         seed: surface.seed ?? 7,
         angle: surface.angle ?? 0,
       });
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.1, scale: 40, seed: 5 });
+      material.roughnessMap = roughnessTexture({
+        base: material.roughness,
+        spread: 0.1,
+        scale: 40,
+        seed: 5,
+      });
       material.normalMap = grainNormalTexture({ strength: 0.45, scale: 26, seed: 13 });
       material.normalScale.set(0.12, 0.12);
       break;
@@ -72,7 +77,12 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
         turbulence: surface.turbulence ?? 6,
         seed: surface.seed ?? 21,
       });
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.07, scale: 30, seed: 17 });
+      material.roughnessMap = roughnessTexture({
+        base: material.roughness,
+        spread: 0.07,
+        scale: 30,
+        seed: 17,
+      });
       material.normalMap = grainNormalTexture({ strength: 0.2, scale: 18, seed: 23 });
       material.normalScale.set(0.07, 0.07);
       break;
@@ -80,13 +90,23 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
     case 'metal': {
       material.metalness = surface.metalness ?? 0.9;
       // Brushed, not mirror: a little anisotropic grain reads as machined.
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.22, scale: 240, seed: 31 });
+      material.roughnessMap = roughnessTexture({
+        base: material.roughness,
+        spread: 0.22,
+        scale: 240,
+        seed: 31,
+      });
       material.normalMap = grainNormalTexture({ strength: 0.5, scale: 200, seed: 29 });
       material.normalScale.set(0.2, 0.05);
       break;
     }
     case 'stone': {
-      material.roughnessMap = roughnessTexture({ base: material.roughness, spread: 0.3, scale: 60, seed: 37 });
+      material.roughnessMap = roughnessTexture({
+        base: material.roughness,
+        spread: 0.3,
+        scale: 60,
+        seed: 37,
+      });
       material.normalMap = grainNormalTexture({ strength: 0.7, scale: 28, seed: 41 });
       material.normalScale.set(0.22, 0.22);
       break;

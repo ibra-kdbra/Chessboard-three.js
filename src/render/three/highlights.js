@@ -137,18 +137,25 @@ export class HighlightLayer {
       // Kept light: at higher opacity this stops reading as a tint on the
       // square and starts reading as a coloured tile covering it.
       lastMove: new MeshPool(this.group, tint(this.palette.lastMove, 0.3)),
-      selected: new MeshPool(this.group, () =>
-        new Mesh(this.geometries.selectRing, flatMaterial(this.palette.selected, 0.9, { additive: true })),
+      selected: new MeshPool(
+        this.group,
+        () =>
+          new Mesh(
+            this.geometries.selectRing,
+            flatMaterial(this.palette.selected, 0.9, { additive: true }),
+          ),
       ),
       check: new MeshPool(this.group, tint(this.palette.check, 0.6)),
       hover: new MeshPool(this.group, tint(this.palette.hover, 0.14)),
       premove: new MeshPool(this.group, tint(this.palette.premove, 0.4)),
       hint: new MeshPool(this.group, tint(this.palette.hint, 0.45)),
-      legal: new MeshPool(this.group, () =>
-        new Mesh(this.geometries.dot, flatMaterial(this.palette.legal, 0.75)),
+      legal: new MeshPool(
+        this.group,
+        () => new Mesh(this.geometries.dot, flatMaterial(this.palette.legal, 0.75)),
       ),
-      legalCapture: new MeshPool(this.group, () =>
-        new Mesh(this.geometries.captureRing, flatMaterial(this.palette.legalCapture, 0.8)),
+      legalCapture: new MeshPool(
+        this.group,
+        () => new Mesh(this.geometries.captureRing, flatMaterial(this.palette.legalCapture, 0.8)),
       ),
     };
 

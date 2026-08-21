@@ -27,21 +27,60 @@ import {
   PerspectiveCamera,
   PointLight,
   Scene,
+  Spherical,
+  Vector2,
   Vector3,
   WebGLRenderer,
+  WebGLRenderTarget,
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+/**
+ * `msaa` is samples on the composer's render target, not on the canvas.
+ *
+ * The renderer's own `antialias` flag does nothing once a composer is in play:
+ * the scene is drawn into an offscreen target and only the final pass touches
+ * the default framebuffer, so the canvas's multisampling never sees any
+ * geometry. Multisampling the composer's target is what actually antialiases
+ * the board's edges.
+ */
 export const QUALITY_TIERS = Object.freeze({
-  low: { shadows: false, shadowMapSize: 512, bloom: false, smaa: false, maxPixelRatio: 1, textures: 'low' },
-  medium: { shadows: true, shadowMapSize: 1024, bloom: true, smaa: false, maxPixelRatio: 1.5, textures: 'medium' },
-  high: { shadows: true, shadowMapSize: 2048, bloom: true, smaa: true, maxPixelRatio: 2, textures: 'high' },
-  ultra: { shadows: true, shadowMapSize: 4096, bloom: true, smaa: true, maxPixelRatio: 2, textures: 'ultra' },
+  low: {
+    shadows: false,
+    shadowMapSize: 512,
+    bloom: false,
+    msaa: 0,
+    maxPixelRatio: 1,
+    textures: 'low',
+  },
+  medium: {
+    shadows: true,
+    shadowMapSize: 1024,
+    bloom: true,
+    msaa: 2,
+    maxPixelRatio: 1.5,
+    textures: 'medium',
+  },
+  high: {
+    shadows: true,
+    shadowMapSize: 2048,
+    bloom: true,
+    msaa: 4,
+    maxPixelRatio: 2,
+    textures: 'high',
+  },
+  ultra: {
+    shadows: true,
+    shadowMapSize: 4096,
+    bloom: true,
+    msaa: 8,
+    maxPixelRatio: 2,
+    textures: 'ultra',
+  },
 });
 
 export const QUALITY_ORDER = Object.freeze(['low', 'medium', 'high', 'ultra']);
@@ -53,6 +92,22 @@ export const CAMERA_TARGET = new Vector3(0, -0.6, 0);
 
 /** Half-extent of the board including its frame, for framing calculations. */
 export const BOARD_RADIUS = 10.3;
+
+/**
+ * How far to tilt the camera for a given viewport shape.
+ *
+ * A 41-degree view of a square board projects to a wide, shallow shape. That
+ * suits a landscape canvas and wastes a portrait one, where fitting the width
+ * then pushes the camera so far back the board becomes a stripe. Tall viewports
+ * therefore look further down, which squares the projection up again.
+ *
+ * @param {number} aspect width / height
+ * @returns {number} polar angle in radians, measured from straight down
+ */
+export function polarForAspect(aspect) {
+  const portraitness = Math.max(0, Math.min(1, (1.15 - aspect) / 0.75));
+  return CAMERA_POLAR_ANGLE * (1 - portraitness) + 0.22 * portraitness;
+}
 
 /**
  * Pushes the camera along its own view direction until the board's footprint
@@ -68,7 +123,11 @@ export const BOARD_RADIUS = 10.3;
  * @param {{ radius?: number, margin?: number, iterations?: number }} [options]
  * @returns {number} the distance settled on
  */
-export function fitCameraToBoard(camera, target, { radius = BOARD_RADIUS, margin = 1.08, iterations = 6 } = {}) {
+export function fitCameraToBoard(
+  camera,
+  target,
+  { radius = BOARD_RADIUS, margin = 1.02, iterations = 6 } = {},
+) {
   // The board is flat, so its silhouette is the four top corners of a square
   // plus a little headroom for the tallest piece.
   const corners = [];
@@ -183,8 +242,12 @@ export class FrameBudget {
 export function createScene(container, theme, { quality = 'high', antialias = true } = {}) {
   const tier = QUALITY_TIERS[quality] ?? QUALITY_TIERS.high;
 
+  // `low` renders straight to the canvas with no composer at all, so there the
+  // canvas flag is the one that matters; every other tier multisamples the
+  // composer target instead.
+  const usesComposer = tier.bloom && (theme.post?.bloom ?? 0) > 0;
   const renderer = new WebGLRenderer({
-    antialias: antialias && !tier.smaa,
+    antialias: antialias && (!usesComposer || tier.msaa === 0),
     alpha: false,
     powerPreference: 'high-performance',
     stencil: false,
@@ -279,24 +342,29 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
   scene.add(table);
 
   // --- post-processing ------------------------------------------------------
-  const composer = new EffectComposer(renderer);
-  composer.renderTarget1.texture.type = HalfFloatType;
-  composer.renderTarget2.texture.type = HalfFloatType;
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
-
+  // Skipped entirely on the lowest tier: a composer that only copies the scene
+  // to the screen costs a full-screen pass and buys nothing.
+  let composer = null;
   let bloomPass = null;
-  if (tier.bloom && (theme.post?.bloom ?? 0) > 0) {
+  let renderTarget = null;
+
+  if (usesComposer) {
+    const buffer = renderer.getDrawingBufferSize(new Vector2());
+    renderTarget = new WebGLRenderTarget(Math.max(1, buffer.x), Math.max(1, buffer.y), {
+      type: HalfFloatType,
+      samples: tier.msaa,
+    });
+    composer = new EffectComposer(renderer, renderTarget);
+    composer.addPass(new RenderPass(scene, camera));
     bloomPass = new UnrealBloomPass(
-      { x: 1, y: 1 },
+      new Vector2(buffer.x, buffer.y),
       theme.post.bloom,
       0.5,
       theme.post.bloomThreshold ?? 0.8,
     );
     composer.addPass(bloomPass);
+    composer.addPass(new OutputPass());
   }
-  if (tier.smaa) composer.addPass(new SMAAPass());
-  composer.addPass(new OutputPass());
 
   container.appendChild(renderer.domElement);
 
@@ -310,26 +378,40 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
     bloomPass,
     quality,
     tier,
+    /** Distance the last fit settled on; the orbit clamps key off this. */
+    fittedDistance: CAMERA_DISTANCE,
 
     /**
      * Sizes everything from the container's real box, DPR included, and
      * reframes the board for the new aspect ratio.
      */
-    resize({ refit = true } = {}) {
+    resize({ refit = true, retilt = true } = {}) {
       const rect = container.getBoundingClientRect();
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
       renderer.setSize(width, height, false);
-      composer.setSize(width, height);
+      composer?.setSize(width, height);
       bloomPass?.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      if (refit) fitCameraToBoard(camera, CAMERA_TARGET);
-      return { width, height };
+
+      if (retilt) {
+        // Keep the azimuth the viewer chose; only the elevation follows the
+        // viewport shape.
+        const spherical = new Spherical().setFromVector3(
+          camera.position.clone().sub(CAMERA_TARGET),
+        );
+        spherical.phi = polarForAspect(camera.aspect);
+        camera.position.setFromSpherical(spherical).add(CAMERA_TARGET);
+        camera.lookAt(CAMERA_TARGET);
+      }
+      if (refit) api.fittedDistance = fitCameraToBoard(camera, CAMERA_TARGET);
+      return { width, height, distance: api.fittedDistance };
     },
 
     render() {
-      composer.render();
+      if (composer) composer.render();
+      else renderer.render(scene, camera);
     },
 
     /** Applies a theme's background, fog, table, environment strength and bloom. */
@@ -353,7 +435,8 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
       table.geometry.dispose();
       tableMaterial.dispose();
       environment.texture.dispose();
-      composer.dispose?.();
+      renderTarget?.dispose();
+      composer?.dispose?.();
       renderer.dispose();
       renderer.forceContextLoss?.();
       renderer.domElement.remove();

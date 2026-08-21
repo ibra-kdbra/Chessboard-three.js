@@ -15,26 +15,85 @@
       }
     </script>
     <style>
-      :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #0d1014; color: #e6e9ef; display: grid; grid-template-columns: 1fr 260px; height: 100dvh; }
-      #board { min-width: 0; }
-      #panel { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto; border-left: 1px solid #232833; }
-      h1 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #7d8797; margin: 0 0 4px; }
-      label { display: grid; gap: 4px; font-size: 12px; color: #a6b0c0; }
-      select, button { font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 7px; border: 1px solid #2c3341; background: #171c24; color: #e6e9ef; }
-      button { cursor: pointer; }
-      button:hover { background: #1f2632; }
-      #log { font-family: ui-monospace, monospace; font-size: 11px; color: #7d8797; white-space: pre-wrap; }
+      :root {
+        color-scheme: dark;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0d1014;
+        color: #e6e9ef;
+        display: grid;
+        grid-template-columns: 1fr 260px;
+        height: 100dvh;
+      }
+      #board {
+        min-width: 0;
+      }
+      #panel {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        overflow: auto;
+        border-left: 1px solid #232833;
+      }
+      h1 {
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7d8797;
+        margin: 0 0 4px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #a6b0c0;
+      }
+      select,
+      button {
+        font: inherit;
+        font-size: 13px;
+        padding: 7px 9px;
+        border-radius: 7px;
+        border: 1px solid #2c3341;
+        background: #171c24;
+        color: #e6e9ef;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1f2632;
+      }
+      #log {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        color: #7d8797;
+        white-space: pre-wrap;
+      }
     </style>
   </head>
   <body>
     <div id="board"></div>
     <div id="panel">
       <h1>Renderer sandbox</h1>
-      <label>Theme <select id="theme"></select></label>
-      <label>Piece set <select id="pieceSet"></select></label>
-      <label>Camera <select id="camera"></select></label>
+      <label
+        >Theme
+        <select id="theme"></select
+      ></label>
+      <label
+        >Piece set
+        <select id="pieceSet"></select
+      ></label>
+      <label
+        >Camera
+        <select id="camera"></select
+      ></label>
       <button id="flip">Flip</button>
       <button id="play">Play a line</button>
       <button id="arrow">Toggle arrows</button>
@@ -101,19 +160,29 @@
 
       board.setPosition(game.position(), { animate: false });
 
-      fill('theme', Object.values(THEMES).map((t) => [t.id, t.name]))
-        .addEventListener('change', (e) => board.setTheme(e.target.value));
-      fill('pieceSet', Object.values(PIECE_SETS).map((s) => [s.id, s.name]))
-        .addEventListener('change', (e) => board.setPieceSet(e.target.value));
-      fill('camera', Object.values(CAMERA_MODES).map((c) => [c.id, c.name]))
-        .addEventListener('change', (e) => board.setCameraMode(e.target.value));
+      fill(
+        'theme',
+        Object.values(THEMES).map((t) => [t.id, t.name]),
+      ).addEventListener('change', (e) => board.setTheme(e.target.value));
+      fill(
+        'pieceSet',
+        Object.values(PIECE_SETS).map((s) => [s.id, s.name]),
+      ).addEventListener('change', (e) => board.setPieceSet(e.target.value));
+      fill(
+        'camera',
+        Object.values(CAMERA_MODES).map((c) => [c.id, c.name]),
+      ).addEventListener('change', (e) => board.setCameraMode(e.target.value));
 
       document.getElementById('flip').addEventListener('click', () => board.orientation('flip'));
       document.getElementById('arrow').addEventListener('click', () => {
-        board.setArrows(board.highlights.arrowMeshes.length ? [] : [
-          { from: 'e2', to: 'e4' },
-          { from: 'g1', to: 'f3', color: 0x35d29a },
-        ]);
+        board.setArrows(
+          board.highlights.arrowMeshes.length
+            ? []
+            : [
+                { from: 'e2', to: 'e4' },
+                { from: 'g1', to: 'f3', color: 0x35d29a },
+              ],
+        );
       });
       document.getElementById('play').addEventListener('click', async () => {
         for (const san of ['e4', 'c5', 'Nf3', 'd6', 'd4', 'cxd4', 'Nxd4', 'Nf6', 'Nc3', 'a6']) {

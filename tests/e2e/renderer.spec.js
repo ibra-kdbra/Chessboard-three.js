@@ -59,10 +59,9 @@ test('plays a line and keeps the board in sync with the rules', async ({ page })
   await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
 
   await page.click('#play');
-  await page.waitForFunction(
-    () => window.__sandboxApi.game.tree.mainline().length === 10,
-    { timeout: 30_000 },
-  );
+  await page.waitForFunction(() => window.__sandboxApi.game.tree.mainline().length === 10, {
+    timeout: 30_000,
+  });
 
   const state = await page.evaluate(() => ({
     fen: window.__sandboxApi.game.fen,
@@ -115,10 +114,9 @@ test('captures a screenshot of every theme', async ({ page }) => {
   await page.goto('/sandbox.html');
   await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
   await page.click('#play');
-  await page.waitForFunction(
-    () => window.__sandboxApi.game.tree.mainline().length === 10,
-    { timeout: 30_000 },
-  );
+  await page.waitForFunction(() => window.__sandboxApi.game.tree.mainline().length === 10, {
+    timeout: 30_000,
+  });
 
   const canvas = page.locator('#board canvas');
   for (const theme of ['tournament', 'marble', 'obsidian', 'emerald', 'neon', 'ivory']) {

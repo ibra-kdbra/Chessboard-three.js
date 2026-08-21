@@ -215,9 +215,27 @@ export function buildBoard(theme, { quality = 'high', showNotation = true } = {}
 
     const edges = [
       { id: 'files-near', labels: [...FILES], position: [0, y, inset], rotation: 0, glyph: 0 },
-      { id: 'files-far', labels: [...FILES].reverse(), position: [0, y, -inset], rotation: Math.PI, glyph: 0 },
-      { id: 'ranks-left', labels: [...RANKS].reverse(), position: [-inset, y, 0], rotation: -Math.PI / 2, glyph: -Math.PI / 2 },
-      { id: 'ranks-right', labels: [...RANKS], position: [inset, y, 0], rotation: Math.PI / 2, glyph: Math.PI / 2 },
+      {
+        id: 'files-far',
+        labels: [...FILES].reverse(),
+        position: [0, y, -inset],
+        rotation: Math.PI,
+        glyph: 0,
+      },
+      {
+        id: 'ranks-left',
+        labels: [...RANKS].reverse(),
+        position: [-inset, y, 0],
+        rotation: -Math.PI / 2,
+        glyph: -Math.PI / 2,
+      },
+      {
+        id: 'ranks-right',
+        labels: [...RANKS],
+        position: [inset, y, 0],
+        rotation: Math.PI / 2,
+        glyph: Math.PI / 2,
+      },
     ];
 
     for (const edge of edges) {
@@ -288,7 +306,10 @@ export const BOARD_UP = new Vector3(0, 1, 0);
  * plank pattern run across the whole surface, which is what an inlaid board
  * actually looks like.
  */
-export function applyPlanarUV(geometry, { span = BOARD_SPAN + FRAME_WIDTH * 2, offset = 0.5 } = {}) {
+export function applyPlanarUV(
+  geometry,
+  { span = BOARD_SPAN + FRAME_WIDTH * 2, offset = 0.5 } = {},
+) {
   const position = geometry.attributes.position;
   const uv = new Float32Array(position.count * 2);
   for (let i = 0; i < position.count; i++) {

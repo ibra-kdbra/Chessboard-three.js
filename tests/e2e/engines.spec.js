@@ -16,13 +16,16 @@ const SANDBOX = '/sandbox.html';
 async function withEngines(page, fn, arg) {
   await page.goto(SANDBOX);
   await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
-  return page.evaluate(async (payload) => {
-    const uci = await import('/src/engine/uciEngine.js');
-    const profiles = await import('/src/engine/engineProfiles.js');
-    window.__uci = uci;
-    window.__profiles = profiles;
-    return (0, eval)(`(${payload.source})`)({ uci, profiles }, payload.arg);
-  }, { source: fn.toString(), arg });
+  return page.evaluate(
+    async (payload) => {
+      const uci = await import('/src/engine/uciEngine.js');
+      const profiles = await import('/src/engine/engineProfiles.js');
+      window.__uci = uci;
+      window.__profiles = profiles;
+      return (0, eval)(`(${payload.source})`)({ uci, profiles }, payload.arg);
+    },
+    { source: fn.toString(), arg },
+  );
 }
 
 for (const id of ['lozza', 'stockfish', 'p4wn']) {
@@ -48,7 +51,8 @@ for (const id of ['lozza', 'stockfish', 'p4wn']) {
           capabilities,
           declaredOptionCount: declared.length,
           profileMatchesReality: {
-            multiPv: capabilities.multiPv === (profiles.getEngineProfile(engineId).id === 'stockfish'),
+            multiPv:
+              capabilities.multiPv === (profiles.getEngineProfile(engineId).id === 'stockfish'),
           },
         };
       },

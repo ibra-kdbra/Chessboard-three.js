@@ -42,9 +42,15 @@ if (typeof THREE?.JSONLoader !== 'function') {
 }
 
 const triangleArea = (a, b, c) => {
-  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
-  const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
-  const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+  const ux = b[0] - a[0],
+    uy = b[1] - a[1],
+    uz = b[2] - a[2];
+  const vx = c[0] - a[0],
+    vy = c[1] - a[1],
+    vz = c[2] - a[2];
+  const cx = uy * vz - uz * vy,
+    cy = uz * vx - ux * vz,
+    cz = ux * vy - uy * vx;
   return 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
 };
 

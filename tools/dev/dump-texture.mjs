@@ -8,12 +8,19 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
-const CHROMIUM = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/usr/bin/chromium'].find(existsSync);
+const CHROMIUM = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/usr/bin/chromium'].find(
+  existsSync,
+);
 const [kind = 'wood', optionsJson = '{}', out = 'texture.png'] = process.argv.slice(2);
 
 const browser = await chromium.launch({
   executablePath: CHROMIUM,
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
+  args: [
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--no-sandbox',
+  ],
 });
 const page = await browser.newPage();
 page.on('pageerror', (error) => console.error('PAGEERROR', String(error)));

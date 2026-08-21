@@ -56,7 +56,15 @@ export class SoundEngine {
   }
 
   /** A short pitched blip: the building block for most cues. */
-  #tone({ frequency, duration = 0.12, type = 'sine', gain = 0.3, delay = 0, detune = 0, sweepTo = null }) {
+  #tone({
+    frequency,
+    duration = 0.12,
+    type = 'sine',
+    gain = 0.3,
+    delay = 0,
+    detune = 0,
+    sweepTo = null,
+  }) {
     const ctx = this.context;
     if (!ctx) return;
     const start = ctx.currentTime + delay;
@@ -77,7 +85,14 @@ export class SoundEngine {
   }
 
   /** Filtered noise: the wooden "knock" of a piece meeting the board. */
-  #noise({ duration = 0.09, gain = 0.35, frequency = 1400, q = 1.2, delay = 0, type = 'bandpass' }) {
+  #noise({
+    duration = 0.09,
+    gain = 0.35,
+    frequency = 1400,
+    q = 1.2,
+    delay = 0,
+    type = 'bandpass',
+  }) {
     const ctx = this.context;
     if (!ctx) return;
     const start = ctx.currentTime + delay;
@@ -126,12 +141,25 @@ export class SoundEngine {
         break;
       case 'checkmate':
         [72, 76, 79, 84].forEach((note, index) => {
-          this.#tone({ frequency: hz(note), duration: 0.34, type: 'triangle', gain: 0.2, delay: index * 0.1 });
+          this.#tone({
+            frequency: hz(note),
+            duration: 0.34,
+            type: 'triangle',
+            gain: 0.2,
+            delay: index * 0.1,
+          });
         });
         break;
       case 'promote':
         this.#tone({ frequency: hz(69), duration: 0.5, type: 'sine', gain: 0.18, sweepTo: hz(88) });
-        this.#tone({ frequency: hz(76), duration: 0.4, type: 'sine', gain: 0.1, delay: 0.08, sweepTo: hz(93) });
+        this.#tone({
+          frequency: hz(76),
+          duration: 0.4,
+          type: 'sine',
+          gain: 0.1,
+          delay: 0.08,
+          sweepTo: hz(93),
+        });
         break;
       case 'illegal':
         this.#tone({ frequency: 150, duration: 0.16, type: 'sawtooth', gain: 0.1, sweepTo: 90 });
@@ -142,7 +170,13 @@ export class SoundEngine {
       case 'flag':
       case 'gameover':
         [72, 68, 65, 60].forEach((note, index) => {
-          this.#tone({ frequency: hz(note), duration: 0.3, type: 'sine', gain: 0.16, delay: index * 0.12 });
+          this.#tone({
+            frequency: hz(note),
+            duration: 0.3,
+            type: 'sine',
+            gain: 0.16,
+            delay: index * 0.12,
+          });
         });
         break;
       case 'select':
@@ -150,7 +184,13 @@ export class SoundEngine {
         break;
       case 'start':
         [60, 64, 67, 72].forEach((note, index) => {
-          this.#tone({ frequency: hz(note), duration: 0.22, type: 'triangle', gain: 0.13, delay: index * 0.07 });
+          this.#tone({
+            frequency: hz(note),
+            duration: 0.22,
+            type: 'triangle',
+            gain: 0.13,
+            delay: index * 0.07,
+          });
         });
         break;
       default:
@@ -188,6 +228,16 @@ export class SoundEngine {
 }
 
 export const SOUND_NAMES = Object.freeze([
-  'move', 'capture', 'castle', 'check', 'checkmate', 'promote',
-  'illegal', 'lowtime', 'flag', 'gameover', 'select', 'start',
+  'move',
+  'capture',
+  'castle',
+  'check',
+  'checkmate',
+  'promote',
+  'illegal',
+  'lowtime',
+  'flag',
+  'gameover',
+  'select',
+  'start',
 ]);

@@ -34,7 +34,7 @@ export const ENGINE_PROFILES = Object.freeze({
   lozza: {
     id: 'lozza',
     name: 'Lozza',
-    url: 'js/lozza.js',
+    url: 'engines/lozza.js',
     strength: '≈2300',
     licence: 'MIT — Colin Jenkins',
     blurb: 'A strong pure-JavaScript engine. Fast to start, plays a sharp game.',
@@ -55,7 +55,7 @@ export const ENGINE_PROFILES = Object.freeze({
   stockfish: {
     id: 'stockfish',
     name: 'Stockfish 5',
-    url: 'js/stockfish.js',
+    url: 'engines/stockfish.js',
     strength: '≈3000',
     licence: 'GPL-3.0 — the Stockfish authors',
     blurb: 'The classic. Bundled as asm.js, so it is a 1.1MB download.',
@@ -73,7 +73,7 @@ export const ENGINE_PROFILES = Object.freeze({
   p4wn: {
     id: 'p4wn',
     name: 'p4wn',
-    url: 'js/p4wn.js',
+    url: 'engines/p4wn.js',
     strength: '≈1100',
     licence: 'ISC — Douglas Bagnall',
     blurb: 'Tiny and cheerful. A good opponent if you are learning.',
@@ -112,7 +112,9 @@ export function budgetFor(profile, wanted) {
   if (profile.budget === 'depth') {
     // p4wn ignores movetime entirely; approximate it with a ply count instead
     // of sending a limit it will silently drop.
-    const fromTime = wanted.movetime ? Math.round(Math.log2(Math.max(1, wanted.movetime / 40))) + 2 : 4;
+    const fromTime = wanted.movetime
+      ? Math.round(Math.log2(Math.max(1, wanted.movetime / 40))) + 2
+      : 4;
     return { depth: Math.min(profile.maxDepth, Math.max(1, wanted.depth ?? fromTime)) };
   }
   const limits = { movetime: Math.max(20, wanted.movetime ?? 1000) };

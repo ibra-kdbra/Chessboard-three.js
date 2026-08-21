@@ -13,9 +13,7 @@
     "postprocessing/ShaderPass.js",
     "postprocessing/OutputPass.js",
     "postprocessing/UnrealBloomPass.js",
-    "postprocessing/SMAAPass.js",
-    "postprocessing/SSAOPass.js",
     "utils/BufferGeometryUtils.js"
   ],
-  "addonFileCount": 18
+  "addonFileCount": 13
 }

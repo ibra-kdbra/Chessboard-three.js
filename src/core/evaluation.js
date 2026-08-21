@@ -133,8 +133,26 @@ export function reviewGame(tree, { bookPlies = 0 } = {}) {
   const nodes = tree.mainline();
   const losses = { w: [], b: [] };
   const counts = {
-    w: { brilliant: 0, best: 0, excellent: 0, good: 0, book: 0, inaccuracy: 0, mistake: 0, blunder: 0 },
-    b: { brilliant: 0, best: 0, excellent: 0, good: 0, book: 0, inaccuracy: 0, mistake: 0, blunder: 0 },
+    w: {
+      brilliant: 0,
+      best: 0,
+      excellent: 0,
+      good: 0,
+      book: 0,
+      inaccuracy: 0,
+      mistake: 0,
+      blunder: 0,
+    },
+    b: {
+      brilliant: 0,
+      best: 0,
+      excellent: 0,
+      good: 0,
+      book: 0,
+      inaccuracy: 0,
+      mistake: 0,
+      blunder: 0,
+    },
   };
 
   for (const [index, node] of nodes.entries()) {

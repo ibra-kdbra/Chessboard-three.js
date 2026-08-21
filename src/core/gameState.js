@@ -71,9 +71,9 @@ export class GameState extends Emitter {
     const out = {};
     for (const row of this.chess.board()) {
       for (const cell of row) {
-        if (cell) out[cell.square] = cell.color === WHITE
-          ? `w${cell.type.toUpperCase()}`
-          : `b${cell.type.toUpperCase()}`;
+        if (cell)
+          out[cell.square] =
+            cell.color === WHITE ? `w${cell.type.toUpperCase()}` : `b${cell.type.toUpperCase()}`;
       }
     }
     return out;
@@ -83,7 +83,9 @@ export class GameState extends Emitter {
 
   /** Verbose legal moves, optionally restricted to one origin square. */
   legalMoves(square) {
-    return square ? this.chess.moves({ square, verbose: true }) : this.chess.moves({ verbose: true });
+    return square
+      ? this.chess.moves({ square, verbose: true })
+      : this.chess.moves({ verbose: true });
   }
 
   /** Destination squares reachable from `square`. */

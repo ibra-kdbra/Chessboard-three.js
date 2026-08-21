@@ -131,8 +131,10 @@ export class Board3D extends Emitter {
       this.controls.enablePan = false;
       this.controls.rotateSpeed = 0.55;
       this.controls.zoomSpeed = 0.8;
-      this.controls.minDistance = 11;
-      this.controls.maxDistance = 34;
+      // Set from the fitted distance in resize(); fixed limits would clamp the
+      // fit itself, which is what cropped the board on a phone in portrait.
+      this.controls.minDistance = 8;
+      this.controls.maxDistance = 200;
       // Keep the camera above the board; below it there is nothing to see.
       this.controls.minPolarAngle = 0.02;
       this.controls.maxPolarAngle = Math.PI / 2.15;
@@ -340,7 +342,8 @@ export class Board3D extends Emitter {
     }
     for (const step of plan) {
       if (step.type === 'clear') jobs.push(this.#removePiece(step.square, { delay: clearDelay }));
-      if (step.type === 'add') jobs.push(this.#addPiece(step.square, step.piece, { delay: clearDelay }));
+      if (step.type === 'add')
+        jobs.push(this.#addPiece(step.square, step.piece, { delay: clearDelay }));
     }
 
     this.position = target;
@@ -493,6 +496,10 @@ export class Board3D extends Emitter {
       .setFromSpherical(new Spherical(from.radius, preset.polar, from.theta))
       .add(CAMERA_TARGET);
     const fitted = fitCameraToBoard(probe, CAMERA_TARGET) * preset.zoom;
+    if (this.controls) {
+      this.controls.minDistance = Math.min(this.controls.minDistance, fitted * 0.45);
+      this.controls.maxDistance = Math.max(this.controls.maxDistance, fitted * 1.75);
+    }
 
     this.ticker.tween({
       duration: 700,
@@ -530,7 +537,14 @@ export class Board3D extends Emitter {
   }
 
   resize() {
-    this.view.resize();
+    const { distance } = this.view.resize();
+    if (this.controls && distance) {
+      // Let the viewer zoom either side of the framed shot, but never so far
+      // that the board leaves the screen.
+      this.controls.minDistance = distance * 0.45;
+      this.controls.maxDistance = distance * 1.75;
+      this.controls.update();
+    }
     this.#dirty = true;
   }
 

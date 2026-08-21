@@ -31,10 +31,16 @@ const noBrowserInCore = {
 export default [
   {
     ignores: [
+      // Vendored and generated code. `js/` holds the original site's bundled
+      // libraries (jQuery, three r80, the engine workers) — linting third-party
+      // minified builds produces thousands of findings and zero information.
       'vendor/**',
       'node_modules/**',
       'legacy/**',
+      'engines/**',
       'assets/**',
+      'img/**',
+      'src/data/openings.js',
       'test-results/**',
       'playwright-report/**',
     ],

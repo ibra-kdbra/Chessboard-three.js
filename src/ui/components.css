@@ -1,0 +1,491 @@
+/* Components: eval bar, clocks, move list, trays, dialogs, toasts. */
+
+/* -------------------------------------------------------------- eval bar -- */
+
+/* Wide enough for its own label: at 12px the number was clipped by the bar's
+   own overflow, which is what hides the rounded ends. */
+.evalbar {
+  position: relative;
+  width: 1.375rem;
+  align-self: stretch;
+  margin: var(--space-4) 0 var(--space-4) var(--space-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--eval-black);
+  flex: none;
+}
+
+.evalbar__white {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 50%;
+  background: var(--eval-white);
+  transition: height var(--duration-slow) var(--ease-out);
+}
+
+.evalbar__mid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: color-mix(in oklab, var(--accent) 60%, transparent);
+  opacity: 0.6;
+}
+
+.evalbar__value {
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.03em;
+  pointer-events: none;
+}
+
+.evalbar__value[data-side='top'] {
+  top: 3px;
+  color: var(--eval-white);
+}
+
+.evalbar__value[data-side='bottom'] {
+  bottom: 3px;
+  color: var(--eval-black);
+}
+
+/* ---------------------------------------------------------------- clocks -- */
+
+.clock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.clock[data-active='true'] {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface-2));
+}
+
+.clock[data-low='true'] .clock__time {
+  color: var(--negative);
+}
+
+.clock[data-flagged='true'] {
+  opacity: 0.6;
+}
+
+.clock__who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  min-width: 0;
+}
+
+.clock__dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  flex: none;
+}
+
+.clock__dot[data-color='w'] {
+  background: #f0f2f6;
+}
+
+.clock__dot[data-color='b'] {
+  background: #1b1f26;
+}
+
+.clock__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clock__time {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ------------------------------------------------------------------ tray -- */
+
+.tray {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.tray__piece {
+  width: 1.1rem;
+  height: 1.1rem;
+  opacity: 0.85;
+}
+
+.tray__balance {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--positive);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- move list -- */
+
+.movelist {
+  display: grid;
+  grid-template-columns: 2.25rem 1fr 1fr;
+  align-content: start;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.movelist__number {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-align: right;
+}
+
+.movelist__move {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-1);
+}
+
+.movelist__move:hover {
+  background: var(--surface-3);
+}
+
+.movelist__move[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: var(--weight-bold);
+}
+
+.movelist__move[data-empty='true'] {
+  cursor: default;
+  color: var(--text-3);
+}
+
+.movelist__move[data-empty='true']:hover {
+  background: none;
+}
+
+.movelist__quality {
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+}
+
+.movelist__quality[data-quality='brilliant'] {
+  color: var(--quality-brilliant);
+}
+.movelist__quality[data-quality='best'] {
+  color: var(--quality-best);
+}
+.movelist__quality[data-quality='book'] {
+  color: var(--quality-book);
+}
+.movelist__quality[data-quality='inaccuracy'] {
+  color: var(--quality-inaccuracy);
+}
+.movelist__quality[data-quality='mistake'] {
+  color: var(--quality-mistake);
+}
+.movelist__quality[data-quality='blunder'] {
+  color: var(--quality-blunder);
+}
+
+.movelist__variations {
+  grid-column: 2 / -1;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  margin-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+}
+
+.movelist__variations button {
+  border: none;
+  background: none;
+  padding: 0 2px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.movelist__variations button:hover {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.movelist__variations button[aria-current='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.movelist__empty {
+  grid-column: 1 / -1;
+  padding: var(--space-4);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* ----------------------------------------------------------- engine info -- */
+
+.engineinfo {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.engineinfo__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.engineinfo__pv {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engineinfo__score {
+  font-weight: var(--weight-bold);
+  color: var(--text-1);
+}
+
+/* ---------------------------------------------------------------- status -- */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.5rem;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+}
+
+.status__badge {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-2);
+}
+
+.status__badge[data-tone='check'] {
+  background: color-mix(in oklab, var(--negative) 20%, var(--surface-3));
+  color: var(--negative);
+}
+
+.status__badge[data-tone='thinking'] {
+  background: color-mix(in oklab, var(--accent) 20%, var(--surface-3));
+  color: var(--accent);
+}
+
+.status__spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status__spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* --------------------------------------------------------------- dialogs -- */
+
+.dialog {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text-1);
+  box-shadow: var(--shadow-lg);
+  max-width: min(30rem, calc(100vw - 2rem));
+  width: 100%;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.dialog__head {
+  padding: var(--space-4) var(--space-5) 0;
+}
+
+.dialog__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+}
+
+.dialog__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.dialog__body {
+  padding: var(--space-4) var(--space-5);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+/* Promotion picker: four big targets, usable on a phone. */
+.promotion {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+}
+
+.promotion__choice {
+  display: grid;
+  place-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--text-2);
+}
+
+.promotion__choice:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
+.promotion__choice svg {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+/* ---------------------------------------------------------------- toasts -- */
+
+.toasts {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 40;
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  pointer-events: auto;
+  animation: toast-in var(--duration-base) var(--ease-out);
+}
+
+.toast[data-tone='error'] {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.toast[data-tone='success'] {
+  border-color: var(--positive);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+/* ------------------------------------------------------------ eval graph -- */
+
+.evalgraph {
+  width: 100%;
+  height: 4.5rem;
+  display: block;
+}
+
+.review {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  align-items: center;
+}
+
+.review__label {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.review__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-medium);
+}
+
+.review__accuracy {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+}

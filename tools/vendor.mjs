@@ -27,8 +27,6 @@ const ADDON_ENTRIES = [
   'postprocessing/ShaderPass.js',
   'postprocessing/OutputPass.js',
   'postprocessing/UnrealBloomPass.js',
-  'postprocessing/SMAAPass.js',
-  'postprocessing/SSAOPass.js',
   'utils/BufferGeometryUtils.js',
 ];
 
@@ -100,8 +98,10 @@ const suffix = dev ? '' : '.min';
 for (const stem of ['three.module', 'three.core']) {
   await writeFile(
     path.join(threeDest, `${stem}.js`),
-    (await readFile(path.join(NM, 'three/build', `${stem}${suffix}.js`), 'utf8'))
-      .replaceAll(`${'three.core'}${suffix}.js`, 'three.core.js'),
+    (await readFile(path.join(NM, 'three/build', `${stem}${suffix}.js`), 'utf8')).replaceAll(
+      `${'three.core'}${suffix}.js`,
+      'three.core.js',
+    ),
   );
 }
 
@@ -133,4 +133,4 @@ await writeFile(path.join(VENDOR, 'manifest.json'), JSON.stringify(manifest, nul
 
 console.log(`three@${threeVersion} (${dev ? 'dev' : 'min'})  chess.js@${chessVersion}`);
 console.log(`addons: ${addons.size} files`);
-console.log(`vendor/: ${(await du(VENDOR) / 1024 / 1024).toFixed(2)} MB`);
+console.log(`vendor/: ${((await du(VENDOR)) / 1024 / 1024).toFixed(2)} MB`);

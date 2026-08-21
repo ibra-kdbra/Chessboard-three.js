@@ -211,7 +211,13 @@ export function marbleTexture({
 }
 
 /** Fine isotropic grain, for the subtle roughness variation on stone or metal. */
-export function roughnessTexture({ size = 512, base = 0.5, spread = 0.25, scale = 90, seed = 3 } = {}) {
+export function roughnessTexture({
+  size = 512,
+  base = 0.5,
+  spread = 0.25,
+  scale = 90,
+  seed = 3,
+} = {}) {
   return cached(`rough:${size}:${base}:${spread}:${scale}:${seed}`, () => {
     const { canvas, ctx } = makeCanvas(size);
     const image = ctx.createImageData(size, size);

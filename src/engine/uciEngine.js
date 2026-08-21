@@ -374,10 +374,11 @@ export class UciEngine extends Emitter {
       // be interrupted politely, so back the budget with a hard deadline.
       const ceiling = (budget.movetime ?? 4000) * 4 + 8000;
       search.watchdog = setTimeout(() => {
-        if (this.#search === search) {
-          this.emit('timeout', { fen, budget });
-          this.cancel().then(() => reject(new Error(`${this.name} did not answer in time`)));
-        }
+        if (this.#search !== search) return;
+        this.emit('timeout', { fen, budget });
+        // Report it as a timeout, not a cancellation: "the engine hung" and
+        // "the user changed their mind" need different responses.
+        this.cancel({ reason: `${this.name} did not answer in time` });
       }, ceiling);
 
       this.#send(parts.join(' '));
@@ -418,7 +419,7 @@ export class UciEngine extends Emitter {
    * interrupt them; sending `stop` would simply queue a message behind a search
    * that has already finished by the time it is read.
    */
-  async cancel() {
+  async cancel({ reason = 'search cancelled' } = {}) {
     if (!this.#search) return null;
     const search = this.#search;
     this.#search = null;
@@ -428,7 +429,7 @@ export class UciEngine extends Emitter {
     this.#worker = null;
     this.#newGameSent = false;
     this.options.clear();
-    search.reject(new Error('search cancelled'));
+    search.reject(new Error(reason));
 
     this.emit('cancelled', {});
     await this.start();

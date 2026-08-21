@@ -1,0 +1,210 @@
+/*
+ * Design tokens.
+ *
+ * Dark first, because the board is a lit 3D scene and a bright chrome around it
+ * fights the render for attention. Light mode is a full re-map rather than an
+ * inversion — the ramps are tuned separately so contrast holds in both.
+ *
+ * Every colour is defined on bare :root; the media query and the [data-theme]
+ * selector only ever *re-*define. That way an explicit choice wins in both
+ * directions and nothing is left undefined when neither applies.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* -- neutral ramp ------------------------------------------------------ */
+  --surface-0: #0b0e13;
+  --surface-1: #11151c;
+  --surface-2: #171d26;
+  --surface-3: #1f2733;
+  --surface-4: #2a3441;
+  --border: #2b3543;
+  --border-strong: #3b4757;
+
+  --text-1: #e8edf5;
+  --text-2: #a4b0c2;
+  --text-3: #6d7a8d;
+  --text-inverse: #0b0e13;
+
+  /* -- accents ----------------------------------------------------------- */
+  --accent: #4c9ffe;
+  --accent-hover: #6cb0ff;
+  --accent-quiet: #17304f;
+  --accent-text: #0b0e13;
+
+  --positive: #35d29a;
+  --negative: #ff5470;
+  --warning: #f7b955;
+  --info: #7c8cff;
+
+  /* Move quality. These also drive the review chips and the eval graph. */
+  --quality-brilliant: #21c7c7;
+  --quality-best: #35d29a;
+  --quality-good: #8fb45f;
+  --quality-book: #a48ce0;
+  --quality-inaccuracy: #f0c05a;
+  --quality-mistake: #f08a3c;
+  --quality-blunder: #f0554b;
+
+  /* Eval bar: white's share vs black's. */
+  --eval-white: #eef1f6;
+  --eval-black: #2b323d;
+
+  /* -- typography -------------------------------------------------------- */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --text-xs: 0.6875rem; /* 11px */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-md: 0.9375rem; /* 15px */
+  --text-lg: 1.125rem; /* 18px */
+  --text-xl: 1.5rem; /* 24px */
+  --text-2xl: 2rem; /* 32px */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-bold: 650;
+
+  /* -- space, radius, depth ---------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 6px 20px -6px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
+
+  /* -- motion ------------------------------------------------------------ */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 340ms;
+
+  /* -- layout ------------------------------------------------------------ */
+  --panel-width: 21rem;
+  --rail-width: 3.5rem;
+  --header-height: 3.25rem;
+}
+
+/* System preference, only when no explicit choice has been made. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --surface-0: #f2f4f8;
+    --surface-1: #ffffff;
+    --surface-2: #f7f9fc;
+    --surface-3: #eaeef5;
+    --surface-4: #dde3ed;
+    --border: #d6dde8;
+    --border-strong: #b9c4d4;
+
+    --text-1: #131922;
+    --text-2: #4a5666;
+    --text-3: #7a8798;
+    --text-inverse: #ffffff;
+
+    --accent: #1668d6;
+    --accent-hover: #0f57b8;
+    --accent-quiet: #dbe8fb;
+    --accent-text: #ffffff;
+
+    --positive: #0f9e6e;
+    --negative: #d3243f;
+    --warning: #b4740c;
+    --info: #4a5bd6;
+
+    --quality-brilliant: #0e9a9a;
+    --quality-best: #0f9e6e;
+    --quality-good: #5c7d2e;
+    --quality-book: #6f52c0;
+    --quality-inaccuracy: #b4820c;
+    --quality-mistake: #c26113;
+    --quality-blunder: #c4271c;
+
+    --eval-white: #ffffff;
+    --eval-black: #3b4553;
+
+    --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.08);
+    --shadow-md: 0 6px 20px -6px rgb(16 24 40 / 0.16);
+    --shadow-lg: 0 24px 60px -20px rgb(16 24 40 / 0.24);
+  }
+}
+
+/* Explicit light choice must win over a dark system preference. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --surface-0: #f2f4f8;
+  --surface-1: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eaeef5;
+  --surface-4: #dde3ed;
+  --border: #d6dde8;
+  --border-strong: #b9c4d4;
+
+  --text-1: #131922;
+  --text-2: #4a5666;
+  --text-3: #7a8798;
+  --text-inverse: #ffffff;
+
+  --accent: #1668d6;
+  --accent-hover: #0f57b8;
+  --accent-quiet: #dbe8fb;
+  --accent-text: #ffffff;
+
+  --positive: #0f9e6e;
+  --negative: #d3243f;
+  --warning: #b4740c;
+  --info: #4a5bd6;
+
+  --quality-brilliant: #0e9a9a;
+  --quality-best: #0f9e6e;
+  --quality-good: #5c7d2e;
+  --quality-book: #6f52c0;
+  --quality-inaccuracy: #b4820c;
+  --quality-mistake: #c26113;
+  --quality-blunder: #c4271c;
+
+  --eval-white: #ffffff;
+  --eval-black: #3b4553;
+
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.08);
+  --shadow-md: 0 6px 20px -6px rgb(16 24 40 / 0.16);
+  --shadow-lg: 0 24px 60px -20px rgb(16 24 40 / 0.24);
+}
+
+/*
+ * High contrast, for players who need the interface to carry without relying on
+ * the subtle ramp. Pairs with the accessible highlight palette in the renderer.
+ */
+:root[data-contrast='high'] {
+  --border: #6b7a8d;
+  --border-strong: #93a3b6;
+  --text-2: #cfd8e5;
+  --text-3: #a7b3c4;
+  --accent: #4fb0ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+}
