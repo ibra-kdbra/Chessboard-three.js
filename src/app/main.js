@@ -13,6 +13,7 @@ import { Session } from './session.js';
 import { KeyboardControl, SHORTCUTS } from './keyboard.js';
 import * as store from './persistence.js';
 import { Board3D, CAMERA_MODES } from '../render/three/board3d.js';
+import { Board2D, PIECE_IMAGE_SETS } from '../render/two/board2d.js';
 import { webGLEnabled } from '../render/three/scene.js';
 import { THEMES, ACCESSIBLE_HIGHLIGHTS, getTheme } from '../render/three/themes.js';
 import { PIECE_SETS } from '../render/three/pieces.js';
@@ -94,36 +95,38 @@ export async function bootstrap(root) {
   );
 
   // ---------------------------------------------------------------- render
-  if (!webGLEnabled()) {
-    boardHost.append(
-      el('div', {
-        style: {
-          display: 'grid',
-          placeItems: 'center',
-          height: '100%',
-          padding: '2rem',
-          textAlign: 'center',
-          color: 'var(--text-2)',
-        },
-        text: 'This browser cannot run WebGL, so the 3D board is unavailable.',
-      }),
-    );
-    toaster.error('WebGL is unavailable — the 3D board cannot start.');
-    return null;
+  const canUseWebGL = webGLEnabled();
+  if (!canUseWebGL && settings.dimensions === 3) {
+    settings.dimensions = 2;
+    toaster.show('WebGL is unavailable, so the board is in 2D.');
   }
 
-  const board = new Board3D(boardHost, {
-    theme: settings.theme,
-    pieceSet: settings.pieceSet,
-    quality: settings.quality ?? undefined,
-    reducedMotion: settings.reducedMotion,
-    showNotation: settings.showCoordinates,
-  });
-
-  if (settings.highContrast) {
-    board.theme = { ...getTheme(settings.theme), highlights: ACCESSIBLE_HIGHLIGHTS };
-    board.setTheme(board.theme);
+  /** Applies the theme, honouring the high-contrast highlight override. */
+  function themeFor() {
+    const theme = getTheme(settings.theme);
+    return settings.highContrast ? { ...theme, highlights: ACCESSIBLE_HIGHLIGHTS } : theme;
   }
+
+  function createBoard() {
+    const shared = {
+      theme: settings.theme,
+      reducedMotion: settings.reducedMotion,
+      showNotation: settings.showCoordinates,
+      orientation: session.playerColor === 'w' ? 'white' : 'black',
+    };
+    const instance =
+      settings.dimensions === 3
+        ? new Board3D(boardHost, {
+            ...shared,
+            pieceSet: settings.pieceSet,
+            quality: settings.quality ?? undefined,
+          })
+        : new Board2D(boardHost, { ...shared, pieceSet: settings.pieceSet2d });
+    instance.setTheme(themeFor());
+    return instance;
+  }
+
+  let board = createBoard();
 
   let selected = null;
   let hintMove = null;
@@ -226,17 +229,45 @@ export async function bootstrap(root) {
     syncBoard();
   }
 
-  board.on('move', ({ from, to }) => {
-    attemptMove(from, to);
-  });
-  board.on('select', (square) => {
-    selected = square;
-    board.setHighlights(highlightState());
-    if (square) sound.play('select');
-  });
-  board.on('arrow', ({ from, to }) => {
-    board.setArrows([{ from, to }]);
-  });
+  /**
+   * The two renderers implement the same contract, so the wiring is identical
+   * and gets re-applied to whichever one is mounted.
+   */
+  function wireBoard() {
+    board.on('move', ({ from, to }) => {
+      attemptMove(from, to);
+    });
+    board.on('select', (square) => {
+      selected = square;
+      board.setHighlights(highlightState());
+      if (square) sound.play('select');
+    });
+    board.on('arrow', ({ from, to }) => {
+      board.setArrows([{ from, to }]);
+    });
+    board.on('ready', () => {
+      syncBoard({ animate: false });
+      if (board.capabilities.cameraModes) board.setCameraMode(settings.cameraMode);
+    });
+  }
+  wireBoard();
+
+  /** Swaps 2D for 3D or back, preserving position and orientation. */
+  async function setDimensions(dimensions) {
+    if (dimensions === settings.dimensions) return;
+    if (dimensions === 3 && !canUseWebGL) {
+      toaster.error('WebGL is unavailable in this browser.');
+      return;
+    }
+    const orientation = board.orientation();
+    settings.dimensions = dimensions;
+    board.destroy();
+    board = createBoard();
+    board.orientation(orientation);
+    wireBoard();
+    syncBoard({ animate: false });
+    store.saveSettings(settings);
+  }
 
   // --------------------------------------------------------- session events
   session.on('move', ({ move, node }) => {
@@ -339,6 +370,7 @@ export async function bootstrap(root) {
       evalBar.setOrientation(next);
       renderStatus();
     },
+    dimensions: () => setDimensions(settings.dimensions === 3 ? 2 : 3),
     hint: async () => {
       const hint = await session.hint();
       if (!hint) return toaster.show('No hint available right now.');
@@ -665,12 +697,28 @@ export async function bootstrap(root) {
         settings.theme,
       ),
     );
+    // The two renderers have different piece sets — 3D models versus sprite
+    // sheets — so the picker follows whichever board is mounted.
+    const in3d = settings.dimensions === 3;
     const pieceSelect = el(
       'select.select',
       {},
       options(
-        Object.values(PIECE_SETS).map((set) => [set.id, set.name]),
-        settings.pieceSet,
+        in3d
+          ? Object.values(PIECE_SETS).map((set) => [set.id, set.name])
+          : Object.values(PIECE_IMAGE_SETS).map((set) => [set.id, set.name]),
+        in3d ? settings.pieceSet : settings.pieceSet2d,
+      ),
+    );
+    const dimensionSelect = el(
+      'select.select',
+      {},
+      options(
+        [
+          ['3', '3D board'],
+          ['2', '2D board'],
+        ],
+        String(settings.dimensions),
       ),
     );
     const cameraSelect = el(
@@ -721,8 +769,12 @@ export async function bootstrap(root) {
       applyBoardTheme();
     });
     pieceSelect.addEventListener('change', () => {
-      settings.pieceSet = pieceSelect.value;
-      board.setPieceSet(settings.pieceSet);
+      if (settings.dimensions === 3) settings.pieceSet = pieceSelect.value;
+      else settings.pieceSet2d = pieceSelect.value;
+      board.setPieceSet(pieceSelect.value);
+    });
+    dimensionSelect.addEventListener('change', () => {
+      setDimensions(Number(dimensionSelect.value));
     });
     cameraSelect.addEventListener('change', () => {
       settings.cameraMode = cameraSelect.value;
@@ -734,18 +786,16 @@ export async function bootstrap(root) {
     });
 
     function applyBoardTheme() {
-      const theme = getTheme(settings.theme);
-      board.setTheme(
-        settings.highContrast ? { ...theme, highlights: ACCESSIBLE_HIGHLIGHTS } : theme,
-      );
+      board.setTheme(themeFor());
     }
 
     await showDialog({
       title: 'Settings',
       body: [
+        field('Board', dimensionSelect),
         field('Board theme', themeSelect),
         field('Piece set', pieceSelect),
-        field('Camera', cameraSelect),
+        settings.dimensions === 3 ? field('Camera', cameraSelect) : null,
         field('Interface', uiThemeSelect),
         toggle('Sound', settings.soundEnabled, (on) => {
           settings.soundEnabled = on;
@@ -881,10 +931,6 @@ export async function bootstrap(root) {
       .catch(() => toaster.show('Live analysis is unavailable.'));
   }
 
-  board.on('ready', () => {
-    syncBoard({ animate: false });
-    board.setCameraMode(settings.cameraMode);
-  });
   syncBoard({ animate: false });
   session.clock.update();
 
@@ -892,7 +938,19 @@ export async function bootstrap(root) {
   document.addEventListener('pointerdown', () => sound.resume(), { once: true });
   window.addEventListener('beforeunload', persist);
 
-  return { session, board, sound, keyboard, settings, actions, analyser };
+  return {
+    session,
+    sound,
+    keyboard,
+    settings,
+    actions,
+    analyser,
+    setDimensions,
+    /** The mounted renderer changes when dimensions are switched. */
+    get board() {
+      return board;
+    },
+  };
 }
 
 // ------------------------------------------------------------------ helpers
@@ -997,6 +1055,7 @@ function buildRail() {
     make('›', 'Forward one move', 'forward'),
     make('⟫', 'Jump to the latest move', 'end'),
     make('⇅', 'Flip the board', 'flip'),
+    make('◫', 'Switch between 2D and 3D', 'dimensions'),
     make('◎', 'Hint', 'hint'),
     make('↩', 'Take back', 'takeback'),
     make('＋', 'New game', 'new'),

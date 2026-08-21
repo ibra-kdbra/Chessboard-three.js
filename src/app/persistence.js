@@ -60,6 +60,7 @@ export function remove(name) {
 export const DEFAULT_SETTINGS = Object.freeze({
   theme: 'tournament',
   pieceSet: 'classic',
+  pieceSet2d: 'wikipedia',
   cameraMode: 'orbit',
   dimensions: 3,
   quality: null, // null means auto-detect

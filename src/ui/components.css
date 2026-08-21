@@ -6,7 +6,7 @@
    own overflow, which is what hides the rounded ends. */
 .evalbar {
   position: relative;
-  width: 1.375rem;
+  width: 1.625rem;
   align-self: stretch;
   margin: var(--space-4) 0 var(--space-4) var(--space-3);
   border-radius: var(--radius-md);
@@ -40,7 +40,8 @@
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: var(--weight-bold);
-  letter-spacing: -0.03em;
+  /* Tightened so a five-character reading like "-12.5" still fits the column. */
+  letter-spacing: -0.05em;
   pointer-events: none;
 }
 
