@@ -167,3 +167,94 @@ test('is usable on a phone-sized viewport', async ({ page }) => {
   await page.screenshot({ path: 'test-results/shots/app-mobile.png' });
   expect(errors).toEqual([]);
 });
+
+test('the evaluation bar tracks the position while you think', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  // A position where white is a queen up: the bar must swing well past level.
+  await page.evaluate(() => {
+    window.__app.session.loadState({
+      version: 1,
+      startFen: 'rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      tree: {
+        version: 1,
+        startFen: 'rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        headers: {},
+        children: [],
+      },
+    });
+    window.__app.analyser.analyse(window.__app.session.state.fen, { turn: 'w' });
+  });
+
+  await page.waitForFunction(
+    () => {
+      const bar = document.querySelector('.evalbar__white');
+      return bar && parseFloat(bar.style.height) > 70;
+    },
+    { timeout: 45_000 },
+  );
+
+  const reading = await page.evaluate(() => ({
+    height: document.querySelector('.evalbar__white').style.height,
+    label: document.querySelector('.evalbar__value').textContent,
+    aria: document.querySelector('.evalbar').getAttribute('aria-valuetext'),
+  }));
+  expect(parseFloat(reading.height)).toBeGreaterThan(70);
+  expect(reading.aria).toContain('White');
+  expect(errors).toEqual([]);
+});
+
+test('resign ends the game and offers a rematch', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  await page.evaluate(() => window.__app.session.state.move('e4'));
+  // Deliberately not awaited: the action's promise only settles once the
+  // confirmation dialog is answered, which happens on the next line.
+  await page.evaluate(() => {
+    window.__app.actions.resign();
+  });
+  await page.locator('.dialog__foot .button--danger').click();
+
+  await expect(page.locator('.dialog__title')).toContainText('Black wins');
+  expect(await page.evaluate(() => window.__app.session.state.result().reason)).toBe('resignation');
+  expect(errors).toEqual([]);
+});
+
+test('a game round-trips through a share link', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  await page.evaluate(() => {
+    for (const san of ['d4', 'd5', 'c4', 'e6']) window.__app.session.state.move(san);
+  });
+  const url = await page.evaluate(async () => {
+    const { buildShareUrl } = await import('/src/app/share.js');
+    return buildShareUrl({ pgn: window.__app.session.state.pgn() });
+  });
+  expect(url).toContain('#game=');
+
+  // Navigating to a URL that differs only by its fragment is a same-document
+  // navigation — the page does not reload and bootstrap never re-runs. The
+  // reload is what actually exercises the share path.
+  await page.goto(url);
+  await page.reload();
+  await page.waitForFunction(() => window.__appReady === true, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__app?.board?.ready === true, { timeout: 45_000 });
+
+  const loaded = await page.evaluate(() => ({
+    moves: window.__app.session.state.tree.mainline().map((n) => n.move.san),
+    mode: window.__app.session.mode,
+    hash: window.location.hash,
+  }));
+  expect(loaded.moves).toEqual(['d4', 'd5', 'c4', 'e6']);
+  // Analysis mode, so the visitor can play either side from the shared position.
+  expect(loaded.mode).toBe('analysis');
+  // The fragment is cleared so a reload does not re-import over their own game.
+  expect(loaded.hash).toBe('');
+  expect(errors).toEqual([]);
+});

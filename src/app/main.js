@@ -18,6 +18,7 @@ import { THEMES, ACCESSIBLE_HIGHLIGHTS, getTheme } from '../render/three/themes.
 import { PIECE_SETS } from '../render/three/pieces.js';
 import { SoundEngine } from '../audio/soundEngine.js';
 import { ENGINE_PROFILES } from '../engine/engineProfiles.js';
+import { Analyser } from '../engine/analyser.js';
 import { DIFFICULTY_LEVELS } from '../engine/opponent.js';
 import { TIME_CONTROLS } from '../core/clock.js';
 import { el, options, announce, replaceChildren } from '../ui/dom.js';
@@ -30,6 +31,14 @@ import { showDialog, askPromotion } from '../ui/dialog.js';
 import { describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
 import { opposite } from '../core/constants.js';
+import {
+  buildShareUrl,
+  clearShareTarget,
+  copyText,
+  downloadText,
+  readShareTarget,
+  suggestFilename,
+} from './share.js';
 
 export async function bootstrap(root) {
   const settings = store.loadSettings();
@@ -70,9 +79,10 @@ export async function bootstrap(root) {
   });
   const rail = buildRail();
 
+  const topbar = buildTopBar();
   root.append(
     el('div.app', {}, [
-      buildTopBar(),
+      topbar.element,
       el('div.app__body', {}, [
         el('div.stage', {}, [
           rail.element,
@@ -118,6 +128,12 @@ export async function bootstrap(root) {
   let selected = null;
   let hintMove = null;
 
+  // A second engine on its own worker, so analysing never competes with the
+  // opponent for a search slot.
+  const analyser = new Analyser({ profile: 'lozza' });
+  /** Live evaluation of the position on screen, when analysis is on. */
+  let liveEvaluation = null;
+
   // ------------------------------------------------------------ board sync
   function highlightState() {
     const status = session.status();
@@ -142,6 +158,8 @@ export async function bootstrap(root) {
     board.setHighlights(highlightState());
     moveList.render(session.state.tree);
     renderStatus();
+    if (settings.liveAnalysis)
+      analyser.analyse(session.state.fen, { turn: session.turn ?? session.state.turn });
   }
 
   function renderStatus() {
@@ -171,7 +189,12 @@ export async function bootstrap(root) {
     whiteClock.setCaptured(material.w, Math.max(0, material.balance));
     blackClock.setCaptured(material.b, Math.max(0, -material.balance));
 
-    const evaluation = session.state.node.evaluation;
+    // Prefer the live analysis of the position being viewed; fall back to
+    // whatever was recorded when the move was played.
+    const evaluation =
+      liveEvaluation && liveEvaluation.fen === session.state.fen
+        ? liveEvaluation.evaluation
+        : session.state.node.evaluation;
     evalBar.set(evaluation);
 
     rail.setBusy(status.thinking);
@@ -245,8 +268,17 @@ export async function bootstrap(root) {
   // The clock is recomputed from timestamps, so it needs a heartbeat to redraw.
   setInterval(() => session.clock.update(), 100);
 
+  /**
+   * Guards against a doubled ceremony. Several things can end a game at once —
+   * a flag falling on the move that also delivers mate — and each of them
+   * emits, so without this the dialog can open twice.
+   */
+  let ceremonyDone = false;
+
   async function onGameOver(result) {
-    sound.play(result.winner ? 'gameover' : 'gameover');
+    if (ceremonyDone) return;
+    ceremonyDone = true;
+    sound.play('gameover');
     syncBoard();
     store.clearCurrentGame();
     store.addToLibrary({
@@ -273,6 +305,7 @@ export async function bootstrap(root) {
 
   // ------------------------------------------------------------- actions
   async function startNewGame(overrides = {}) {
+    ceremonyDone = false;
     await session.newGame({ mode: session.mode, ...overrides });
     board.orientation(session.playerColor === 'w' ? 'white' : 'black');
     evalBar.setOrientation(session.playerColor === 'w' ? 'white' : 'black');
@@ -337,7 +370,160 @@ export async function bootstrap(root) {
     },
     typing: () => {},
     help: () => showShortcutHelp(),
+    resign: () => confirmResign(),
+    draw: () => offerDraw(),
+    share: () => shareGame(),
+    exportGame: () => exportGame(),
+    importGame: () => importGame(),
+    newGame: () => showNewGameDialog(),
   };
+
+  topbar.setActions(
+    [
+      ['Import', 'Import a PGN game or FEN position', 'importGame'],
+      ['Export', 'Copy or download this game as PGN', 'exportGame'],
+      ['Share', 'Copy a link to this game', 'share'],
+      ['Draw', 'Offer a draw', 'draw'],
+      ['Resign', 'Resign the game', 'resign', 'danger'],
+      ['New game', 'Start a new game', 'newGame', 'primary'],
+    ],
+    (action) => actions[action]?.(),
+  );
+
+  // ------------------------------------------------ resign, draw, transfer
+
+  async function confirmResign() {
+    if (session.state.isFinished) return;
+    const answer = await showDialog({
+      title: 'Resign?',
+      subtitle: 'The game is recorded as a loss.',
+      actions: [
+        { label: 'Keep playing', value: null, autofocus: true },
+        { label: 'Resign', value: 'resign', variant: 'danger' },
+      ],
+    });
+    // Not onGameOver(...) — adjudicate emits `gameover`, which already runs it.
+    if (answer === 'resign') session.resign();
+  }
+
+  async function offerDraw() {
+    if (session.state.isFinished) return;
+    if (session.mode !== 'engine') {
+      const answer = await showDialog({
+        title: 'Offer a draw?',
+        subtitle: 'Both players must agree.',
+        actions: [
+          { label: 'Cancel', value: null },
+          { label: 'Agree a draw', value: 'draw', variant: 'primary', autofocus: true },
+        ],
+      });
+      if (answer === 'draw') session.agreeDraw();
+      return;
+    }
+    // Against the engine, a draw offer is answered by the position rather than
+    // by negotiation: it accepts only when it is not better off playing on.
+    const evaluation = session.state.node.evaluation;
+    const enginePov = evaluation ? (session.playerColor === 'w' ? -1 : 1) * evaluation.value : 0;
+    const accepted = evaluation ? enginePov < 40 : false;
+    if (accepted) {
+      toaster.show('Draw accepted.');
+      session.agreeDraw();
+    } else {
+      toaster.show('Draw declined — play on.');
+    }
+  }
+
+  async function exportGame() {
+    const pgn = session.state.pgn();
+    const opening = session.status().opening?.name;
+    const answer = await showDialog({
+      title: 'Export',
+      subtitle: 'PGN keeps your variations, comments and evaluations.',
+      body: el('textarea.select', {
+        readonly: true,
+        rows: 8,
+        value: pgn,
+        style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', resize: 'vertical' },
+      }),
+      actions: [
+        { label: 'Close', value: null },
+        { label: 'Download', value: 'download' },
+        { label: 'Copy PGN', value: 'copy', variant: 'primary', autofocus: true },
+      ],
+    });
+    if (answer === 'copy') {
+      toaster.show((await copyText(pgn)) ? 'PGN copied.' : 'Could not reach the clipboard.');
+    } else if (answer === 'download') {
+      downloadText(suggestFilename(opening), pgn);
+    }
+  }
+
+  async function shareGame() {
+    const url = session.state.ply
+      ? buildShareUrl({ pgn: session.state.pgn() })
+      : buildShareUrl({ fen: session.state.fen });
+    const answer = await showDialog({
+      title: 'Share',
+      subtitle: 'The whole game travels in the link. Nothing is uploaded.',
+      body: el('input.select', {
+        readonly: true,
+        value: url,
+        style: { fontSize: 'var(--text-xs)' },
+      }),
+      actions: [
+        { label: 'Close', value: null },
+        { label: 'Copy link', value: 'copy', variant: 'primary', autofocus: true },
+      ],
+    });
+    if (answer === 'copy') {
+      toaster.show((await copyText(url)) ? 'Link copied.' : 'Could not reach the clipboard.');
+    }
+  }
+
+  async function importGame() {
+    const input = el('textarea.select', {
+      rows: 7,
+      placeholder: 'Paste a PGN game, or a FEN position…',
+      style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', resize: 'vertical' },
+    });
+    const answer = await showDialog({
+      title: 'Import',
+      subtitle: 'A PGN game or a single FEN position.',
+      body: input,
+      actions: [
+        { label: 'Cancel', value: null },
+        { label: 'Load', value: 'load', variant: 'primary' },
+      ],
+    });
+    if (answer !== 'load') return;
+    const applied = await applyImport(input.value.trim());
+    if (!applied) toaster.error('That is not a PGN game or a FEN position.');
+  }
+
+  /** Loads pasted or shared text, whichever kind it turns out to be. */
+  async function applyImport(text) {
+    if (!text) return false;
+    await session.cancelThinking();
+    try {
+      if (text.includes('[') || /\d+\s*\./.test(text)) {
+        session.loadPgn(text);
+      } else {
+        session.loadState({
+          version: 1,
+          startFen: text,
+          tree: { version: 1, startFen: text, headers: {}, children: [] },
+        });
+      }
+    } catch {
+      return false;
+    }
+    session.setMode('analysis');
+    board.orientation('white');
+    evalBar.setOrientation('white');
+    syncBoard({ animate: false });
+    toaster.success('Loaded. You are in analysis mode — play either side.');
+    return true;
+  }
 
   // ------------------------------------------------------------- keyboard
   const keyboard = new KeyboardControl({
@@ -585,6 +771,18 @@ export async function bootstrap(root) {
         toggle('Vibration on mobile', settings.haptics, (on) => {
           settings.haptics = on;
         }),
+        toggle('Live evaluation bar', settings.liveAnalysis, async (on) => {
+          settings.liveAnalysis = on;
+          if (on) {
+            await analyser.start().catch(() => {});
+            analyser.setEnabled(true);
+            analyser.analyse(session.state.fen, { turn: session.state.turn });
+          } else {
+            analyser.setEnabled(false);
+            liveEvaluation = null;
+            renderStatus();
+          }
+        }),
       ],
       actions: [{ label: 'Done', value: 'done', variant: 'primary', autofocus: true }],
     });
@@ -617,6 +815,26 @@ export async function bootstrap(root) {
     });
   }
 
+  analyser.on('evaluation', (result) => {
+    liveEvaluation = result;
+    if (result.fen !== session.state.fen) return;
+    evalBar.set(result.evaluation);
+    // The opponent's own engine panel takes over while it is thinking.
+    if (!session.thinking) {
+      enginePanel.update(
+        {
+          depth: result.depth,
+          score: {
+            ...result.evaluation,
+            value: session.state.turn === 'w' ? result.evaluation.value : -result.evaluation.value,
+          },
+          pv: result.pv,
+        },
+        session.state.turn,
+      );
+    }
+  });
+
   // ------------------------------------------------------------------ boot
   await session.useEngine(settings.engine);
   enginePanel.setEngine(
@@ -626,7 +844,17 @@ export async function bootstrap(root) {
   session.setDifficulty(settings.difficulty);
   session.setTimeControl(settings.timeControl);
 
-  const saved = store.loadCurrentGame();
+  // A shared link wins over whatever was in progress: someone followed it on
+  // purpose, and their own game is still in storage if they reload without it.
+  const shared = readShareTarget();
+  let loadedFromLink = false;
+  if (shared) {
+    loadedFromLink = await applyImport(shared.kind === 'fen' ? shared.fen : shared.pgn);
+    clearShareTarget();
+    if (!loadedFromLink) toaster.error('That link does not contain a readable game.');
+  }
+
+  const saved = loadedFromLink ? null : store.loadCurrentGame();
   if (saved) {
     try {
       session.loadState(saved.state, {
@@ -643,6 +871,16 @@ export async function bootstrap(root) {
     }
   }
 
+  if (settings.liveAnalysis) {
+    analyser
+      .start()
+      .then(() => {
+        analyser.setEnabled(true);
+        analyser.analyse(session.state.fen, { turn: session.state.turn });
+      })
+      .catch(() => toaster.show('Live analysis is unavailable.'));
+  }
+
   board.on('ready', () => {
     syncBoard({ animate: false });
     board.setCameraMode(settings.cameraMode);
@@ -654,7 +892,7 @@ export async function bootstrap(root) {
   document.addEventListener('pointerdown', () => sound.resume(), { once: true });
   window.addEventListener('beforeunload', persist);
 
-  return { session, board, sound, keyboard, settings, actions };
+  return { session, board, sound, keyboard, settings, actions, analyser };
 }
 
 // ------------------------------------------------------------------ helpers
@@ -711,10 +949,36 @@ function applyInterfaceTheme(settings) {
 }
 
 function buildTopBar() {
-  return el('header.topbar', {}, [
+  const actions = el('div.topbar__actions');
+  const element = el('header.topbar', {}, [
     el('h1.topbar__brand', {}, ['chessboard3', el('span', { text: 'three.js chess' })]),
     el('div.topbar__spacer'),
+    actions,
   ]);
+
+  return {
+    element,
+    /** @param {Array<[label: string, title: string, action: string, variant?: string]>} spec */
+    setActions(spec, onAction) {
+      actions.replaceChildren(
+        ...spec.map(([label, title, action, variant]) =>
+          el('button.button', {
+            type: 'button',
+            class:
+              variant === 'primary'
+                ? 'button--primary'
+                : variant === 'danger'
+                  ? 'button--danger'
+                  : 'button--quiet',
+            text: label,
+            title,
+            'aria-label': title,
+            on: { click: () => onAction(action) },
+          }),
+        ),
+      );
+    },
+  };
 }
 
 function buildRail() {

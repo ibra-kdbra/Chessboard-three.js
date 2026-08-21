@@ -69,6 +69,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   showLegalMoves: true,
   showCoordinates: true,
   showEvalBar: true,
+  liveAnalysis: true,
   soundEnabled: true,
   soundVolume: 0.6,
   haptics: true,

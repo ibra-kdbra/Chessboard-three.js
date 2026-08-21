@@ -41,6 +41,7 @@ export default [
       'assets/**',
       'img/**',
       'src/data/openings.js',
+      '.probe/**',
       'test-results/**',
       'playwright-report/**',
     ],

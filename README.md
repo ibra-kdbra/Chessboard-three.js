@@ -15,18 +15,18 @@ npm run dev        # http://127.0.0.1:8080
 
 ## What is here
 
-| Path | |
-| --- | --- |
-| `index.html` | The game. |
-| `sandbox.html` | Renderer playground — themes, piece sets, camera modes. |
-| `src/core/` | Rules, move tree, PGN, clock, evaluation, opening book. No DOM, no three.js. |
-| `src/engine/` | UCI adapter over the engine workers, and the opponent. |
-| `src/render/` | The 3D board, and the contract a 2D one would implement. |
-| `src/ui/` | Design tokens and the panel components. |
-| `src/app/` | Session, keyboard, persistence, wiring. |
-| `engines/` | Lozza, Stockfish 5 and p4wn, as Web Workers. |
-| `tools/` | Vendoring, asset conversion, model verification, dev helpers. |
-| `legacy/` | The original site, preserved. See `legacy/README.md`. |
+| Path           |                                                                              |
+| -------------- | ---------------------------------------------------------------------------- |
+| `index.html`   | The game.                                                                    |
+| `sandbox.html` | Renderer playground — themes, piece sets, camera modes.                      |
+| `src/core/`    | Rules, move tree, PGN, clock, evaluation, opening book. No DOM, no three.js. |
+| `src/engine/`  | UCI adapter over the engine workers, and the opponent.                       |
+| `src/render/`  | The 3D board, and the contract a 2D one would implement.                     |
+| `src/ui/`      | Design tokens and the panel components.                                      |
+| `src/app/`     | Session, keyboard, persistence, wiring.                                      |
+| `engines/`     | Lozza, Stockfish 5 and p4wn, as Web Workers.                                 |
+| `tools/`       | Vendoring, asset conversion, model verification, dev helpers.                |
+| `legacy/`      | The original site, preserved. See `legacy/README.md`.                        |
 
 ## Playing
 
@@ -34,14 +34,14 @@ Drag a piece, or click it and click where it goes. The whole game also works
 from the keyboard: **Tab** to the board then arrow keys and **Enter**, or just
 type the move — `Nf3`, `exd5`, `O-O` — and press **Enter**.
 
-| | |
-| --- | --- |
-| `←` `→` | Step through the game |
+|              |                                       |
+| ------------ | ------------------------------------- |
+| `←` `→`      | Step through the game                 |
 | `Home` `End` | Jump to the start, or the latest move |
-| `F` | Flip the board |
-| `H` | Hint |
-| `T` | Take back |
-| `?` | Show every shortcut |
+| `F`          | Flip the board                        |
+| `H`          | Hint                                  |
+| `T`          | Take back                             |
+| `?`          | Show every shortcut                   |
 
 Right-drag across the board to draw an arrow.
 
@@ -49,11 +49,11 @@ Right-drag across the board to draw an arrow.
 
 Three ship with the game, all as Web Workers.
 
-| | Strength | Notes |
-| --- | --- | --- |
-| **Lozza** | ≈2300 | Fast to start, sharp. The default. |
-| **Stockfish 5** | ≈3000 | A 1.1MB asm.js build. The strongest option. |
-| **p4wn** | ≈1100 | Tiny. A good opponent while you are learning. |
+|                 | Strength | Notes                                         |
+| --------------- | -------- | --------------------------------------------- |
+| **Lozza**       | ≈2300    | Fast to start, sharp. The default.            |
+| **Stockfish 5** | ≈3000    | A 1.1MB asm.js build. The strongest option.   |
+| **p4wn**        | ≈1100    | Tiny. A good opponent while you are learning. |
 
 None of them can be interrupted — each runs its search on the worker's own event
 loop, so a `stop` message is only read after the search it was meant to stop has
