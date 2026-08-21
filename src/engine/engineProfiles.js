@@ -26,9 +26,6 @@
  * @property {boolean} refusesGameOver hangs if asked to search a finished position
  */
 
-/** Every search blocks the worker's event loop, so nothing can interrupt one. */
-export const NO_ENGINE_SUPPORTS_STOP = true;
-
 /** @type {Record<string, EngineProfile>} */
 export const ENGINE_PROFILES = Object.freeze({
   lozza: {

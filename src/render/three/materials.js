@@ -6,7 +6,7 @@
  * buys clearcoat and transmission, which are what make lacquered wood look
  * lacquered and glass pieces look like glass rather than tinted plastic.
  */
-import { Color, DoubleSide, MeshPhysicalMaterial, MeshBasicMaterial, SRGBColorSpace } from 'three';
+import { Color, DoubleSide, MeshPhysicalMaterial, SRGBColorSpace } from 'three';
 import { woodTexture, marbleTexture, roughnessTexture, grainNormalTexture } from './textures.js';
 
 /**
@@ -127,30 +127,4 @@ export function buildMaterial(surface, { textureScale = 1, quality = 'high' } = 
   }
 
   return material;
-}
-
-/** Flat unlit material for highlight decals and overlays. */
-export function buildOverlayMaterial(color, opacity = 0.55) {
-  const material = new MeshBasicMaterial({
-    color: new Color(color),
-    transparent: true,
-    opacity,
-    depthWrite: false,
-  });
-  // Sit just above the board surface without z-fighting.
-  material.polygonOffset = true;
-  material.polygonOffsetFactor = -2;
-  material.polygonOffsetUnits = -2;
-  return material;
-}
-
-/** Frees a material and every texture it owns. */
-export function disposeMaterial(material) {
-  if (!material) return;
-  for (const key of ['map', 'roughnessMap', 'normalMap', 'emissiveMap', 'aoMap', 'alphaMap']) {
-    // Textures are cached and shared between themes, so they are disposed by
-    // disposeTextureCache() rather than here.
-    if (material[key]) material[key] = null;
-  }
-  material.dispose();
 }

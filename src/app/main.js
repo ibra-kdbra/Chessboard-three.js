@@ -490,11 +490,13 @@ export async function bootstrap(root) {
     share: () => shareGame(),
     exportGame: () => exportGame(),
     importGame: () => importGame(),
+    library: () => showLibrary(),
     newGame: () => showNewGameDialog(),
   };
 
   topbar.setActions(
     [
+      ['Games', 'Browse your finished games', 'library'],
       ['Import', 'Import a PGN game or FEN position', 'importGame'],
       ['Export', 'Copy or download this game as PGN', 'exportGame'],
       ['Share', 'Copy a link to this game', 'share'],
@@ -592,6 +594,64 @@ export async function bootstrap(root) {
     });
     if (answer === 'copy') {
       toaster.show((await copyText(url)) ? 'Link copied.' : 'Could not reach the clipboard.');
+    }
+  }
+
+  /** The library of finished games, newest first. */
+  async function showLibrary() {
+    const games = store.loadLibrary();
+    if (!games.length) {
+      toaster.show('No finished games saved yet.');
+      return;
+    }
+
+    const list = el('div', {
+      style: { display: 'grid', gap: 'var(--space-1)', maxHeight: '22rem', overflowY: 'auto' },
+    });
+    let chosen = null;
+    for (const game of games) {
+      const when = new Date(game.savedAt).toLocaleDateString();
+      list.append(
+        el(
+          'button.button',
+          {
+            type: 'button',
+            style: { justifyContent: 'space-between', textAlign: 'left', width: '100%' },
+            on: {
+              click: (event) => {
+                chosen = game;
+                event.target.closest('dialog').close();
+              },
+            },
+          },
+          [
+            el('span', { text: game.opening ?? 'Unnamed opening' }),
+            el('span', {
+              text: `${game.result}  ·  ${when}`,
+              style: { color: 'var(--text-3)', fontSize: 'var(--text-xs)' },
+            }),
+          ],
+        ),
+      );
+    }
+
+    const finished = new AbortController();
+    const answer = showDialog({
+      title: 'Saved games',
+      subtitle: `${games.length} finished ${games.length === 1 ? 'game' : 'games'}, newest first.`,
+      body: list,
+      actions: [{ label: 'Close', value: null }],
+      closeSignal: finished.signal,
+    });
+    // A click inside the list closes the dialog directly, which resolves the
+    // promise; the controller is only for the caller-driven path.
+    list.addEventListener('click', () => finished.abort(), { once: true });
+    await answer;
+
+    if (chosen?.pgn) {
+      const loaded = await applyImport(chosen.pgn);
+      if (loaded) session.state.toEnd();
+      syncBoard({ animate: false });
     }
   }
 

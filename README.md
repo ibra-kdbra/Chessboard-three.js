@@ -1,9 +1,12 @@
 # chessboard3
 
-A chess game in the browser, rendered in 3D with three.js. Play the computer at
-ten graded strengths, or two of you on one device — with clocks, an evaluation
-bar, an opening book, a move tree that keeps your variations, and six board
-themes.
+A chess game in the browser, rendered in 3D with three.js — or in 2D, from the
+same code, when you would rather just read the board.
+
+Play the computer at ten graded strengths or a friend on the same device. Clocks,
+a live evaluation bar, an opening book that names what you are playing, a move
+tree that keeps your variations, a post-game review that scores every position
+and graphs where the game turned, and six board themes.
 
 No build step. The source ships as native ES modules and runs from any static
 server.
@@ -21,12 +24,31 @@ npm run dev        # http://127.0.0.1:8080
 | `sandbox.html` | Renderer playground — themes, piece sets, camera modes.                      |
 | `src/core/`    | Rules, move tree, PGN, clock, evaluation, opening book. No DOM, no three.js. |
 | `src/engine/`  | UCI adapter over the engine workers, and the opponent.                       |
-| `src/render/`  | The 3D board, and the contract a 2D one would implement.                     |
+| `src/render/`  | The 3D and 2D boards, and the contract both implement.                       |
 | `src/ui/`      | Design tokens and the panel components.                                      |
 | `src/app/`     | Session, keyboard, persistence, wiring.                                      |
 | `engines/`     | Lozza, Stockfish 5 and p4wn, as Web Workers.                                 |
 | `tools/`       | Vendoring, asset conversion, model verification, dev helpers.                |
 | `legacy/`      | The original site, preserved. See `legacy/README.md`.                        |
+
+## What it does
+
+|                   |                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Opponents**     | Ten graded rungs, three engines. See [Difficulty](#difficulty).                                                             |
+| **Modes**         | Against the computer, two players on one device, or a free analysis board.                                                  |
+| **Clocks**        | Bullet through classical, Fischer or Bronstein increments, low-time warnings.                                               |
+| **Analysis**      | A live evaluation bar while you think, and the engine's current best line.                                                  |
+| **Review**        | Scores every position of a finished game, graphs it, and grades each move.                                                  |
+| **Notation**      | A real move tree — play from any position to branch, with variations kept.                                                  |
+| **Openings**      | 490 ECO lines; the opening is named as you play it.                                                                         |
+| **Import/export** | PGN in and out with variations, comments and evaluations; FEN in; a share link that carries the whole game in its fragment. |
+| **Coaching**      | An optional overlay marking pieces you are about to lose.                                                                   |
+| **Presentation**  | Six board themes, three 3D piece sets and three 2D ones, four camera modes.                                                 |
+| **Accessibility** | Full keyboard play, screen-reader move announcements, high-contrast highlights, reduced motion.                             |
+
+Nothing is uploaded. Games and settings live in your browser; a shared link
+carries the game itself, not a reference to one.
 
 ## Playing
 
