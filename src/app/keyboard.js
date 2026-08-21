@@ -11,15 +11,25 @@
  */
 import { FILES, RANKS } from '../core/constants.js';
 
-/** Keys that mean "do the thing", wherever focus is. */
-const GLOBAL = new Map([
+/** Navigation keys. Never ambiguous, so they work whatever is being typed. */
+const NAVIGATION = new Map([
   ['ArrowLeft', 'back'],
   ['ArrowRight', 'forward'],
   ['Home', 'start'],
   ['End', 'end'],
-  ['f', 'flip'],
-  ['h', 'hint'],
-  ['t', 'takeback'],
+]);
+
+/**
+ * Letter shortcuts, deliberately upper case.
+ *
+ * `f`, `h` and `t` in lower case are file letters: bound as shortcuts, typing
+ * `Nf3` flipped the board instead of entering the move. No SAN move begins with
+ * F, H or T, so the shifted forms cannot collide with anything a player types.
+ */
+const LETTERS = new Map([
+  ['F', 'flip'],
+  ['H', 'hint'],
+  ['T', 'takeback'],
   ['?', 'help'],
 ]);
 
@@ -71,8 +81,19 @@ export class KeyboardControl {
     );
   }
 
+  /**
+   * True while a modal is up.
+   *
+   * The dialog owns the keyboard then. Without this, arrows navigated the game
+   * and `F` flipped the board behind an open dialog, which is both confusing
+   * and a trap for anyone driving the dialog from the keyboard.
+   */
+  #modalOpen() {
+    return document.querySelector('dialog[open]') !== null;
+  }
+
   #onKeyDown(event) {
-    if (!this.enabled || this.#isEditing(event)) return;
+    if (!this.enabled || this.#isEditing(event) || this.#modalOpen()) return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
 
     const boardFocused = document.activeElement === this.options.boardElement;
@@ -94,10 +115,17 @@ export class KeyboardControl {
       return;
     }
 
-    const action = GLOBAL.get(event.key);
-    if (action) {
+    const navigation = NAVIGATION.get(event.key);
+    if (navigation) {
       event.preventDefault();
-      this.options.onAction?.(action);
+      this.options.onAction?.(navigation);
+      return;
+    }
+
+    const letter = LETTERS.get(event.key);
+    if (letter) {
+      event.preventDefault();
+      this.options.onAction?.(letter);
       return;
     }
 
@@ -181,10 +209,11 @@ export class KeyboardControl {
 export const SHORTCUTS = Object.freeze([
   ['←  →', 'Step back and forward through the game'],
   ['Home / End', 'Jump to the start or the latest move'],
-  ['F', 'Flip the board'],
-  ['H', 'Ask for a hint'],
-  ['T', 'Take back a move'],
-  ['Tab then arrows', 'Move the board cursor; Enter selects'],
   ['Type e4, Nf3…', 'Enter a move in algebraic notation, then Enter'],
+  ['Tab then arrows', 'Move the board cursor; Enter selects'],
+  ['Shift + F', 'Flip the board'],
+  ['Shift + H', 'Ask for a hint'],
+  ['Shift + T', 'Take back a move'],
+  ['Shift + ?', 'Show this list'],
   ['Esc', 'Cancel a selection or a half-typed move'],
 ]);

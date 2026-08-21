@@ -298,3 +298,64 @@ test('a finished game can be analysed and graphed', async ({ page }) => {
   await page.screenshot({ path: 'test-results/shots/app-review.png' });
   expect(errors).toEqual([]);
 });
+
+test('typing a move containing f, h or t enters it rather than firing a shortcut', async ({
+  page,
+}) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  const before = await page.evaluate(() => window.__app.board.orientation());
+  await page.locator('#board').focus();
+  // `f` and `h` are file letters. Bound plainly as shortcuts, this flips the
+  // board and never reaches the move buffer.
+  await page.keyboard.type('Nf3');
+  await page.keyboard.press('Enter');
+
+  await page.waitForFunction(() => window.__app.session.state.ply >= 1, { timeout: 20_000 });
+  const after = await page.evaluate(() => ({
+    first: window.__app.session.state.tree.mainline()[0].move.san,
+    orientation: window.__app.board.orientation(),
+  }));
+
+  expect(after.first).toBe('Nf3');
+  expect(after.orientation).toBe(before);
+  expect(errors).toEqual([]);
+});
+
+test('shortcuts do not reach the game behind an open dialog', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  await page.evaluate(() => {
+    for (const san of ['e4', 'e5', 'Nf3']) window.__app.session.state.move(san);
+    window.__app.actions.end();
+  });
+  const before = await page.evaluate(() => ({
+    ply: window.__app.session.state.ply,
+    orientation: window.__app.board.orientation(),
+  }));
+
+  await page.evaluate(() => {
+    window.__app.actions.newGame();
+  });
+  await page.waitForSelector('dialog[open]');
+
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Shift+F');
+  await page.waitForTimeout(300);
+
+  const after = await page.evaluate(() => ({
+    ply: window.__app.session.state.ply,
+    orientation: window.__app.board.orientation(),
+    dialogOpen: document.querySelector('dialog[open]') !== null,
+  }));
+
+  // The dialog owns the keyboard while it is up.
+  expect(after.dialogOpen).toBe(true);
+  expect(after.ply).toBe(before.ply);
+  expect(after.orientation).toBe(before.orientation);
+  expect(errors).toEqual([]);
+});
