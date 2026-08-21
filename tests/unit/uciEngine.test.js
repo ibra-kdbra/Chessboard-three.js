@@ -395,3 +395,33 @@ describe('UciEngine cancellation timing', () => {
     engine.dispose();
   });
 });
+
+describe('SAN principal variations', () => {
+  it("tidies an engine's SAN into the form a player reads", async () => {
+    const Worker = class {
+      constructor() {
+        this.onmessage = null;
+      }
+      postMessage(command) {
+        const replies =
+          {
+            uci: ['uciok'],
+            isready: ['readyok'],
+            position: [],
+            go: ['info depth 6 score cp 21 pv Nf3 f2xe3 0-0 0-0-0 e2e4', 'bestmove g1f3'],
+          }[command.split(' ')[0]] ?? [];
+        queueMicrotask(() => {
+          for (const line of replies) this.onmessage?.({ data: line });
+        });
+      }
+      terminate() {}
+    };
+    const engine = new UciEngine({ profile: 'lozza', workerFactory: () => new Worker() });
+    await engine.start();
+    const result = await engine.search('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', { movetime: 50 });
+
+    expect(result.lines[0].pv).toEqual(['Nf3', 'fxe3', 'O-O', 'O-O-O', 'e2e4']);
+    expect(result.lines[0].pvFormat).toBe('san');
+    engine.dispose();
+  });
+});

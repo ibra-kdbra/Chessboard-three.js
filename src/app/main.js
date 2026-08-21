@@ -32,6 +32,7 @@ import { showDialog, askPromotion } from '../ui/dialog.js';
 import { buildEvalGraph } from '../ui/evalGraph.js';
 import { describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
+import { findHangingPieces } from '../core/staticEval.js';
 import { opposite } from '../core/constants.js';
 import {
   buildShareUrl,
@@ -142,7 +143,18 @@ export async function bootstrap(root) {
   function highlightState() {
     const status = session.status();
     const last = session.state.node.move;
+    // The coach layer: pieces of the side to move that can simply be taken.
+    // Deliberately only the clear cases — an overlay that lights up half the
+    // board every move is noise, and players stop reading it.
+    const threatened =
+      settings.coachHints && !status.result.over
+        ? findHangingPieces(session.state.fen, status.turn)
+            .filter((entry) => entry.loss >= 100)
+            .slice(0, 3)
+            .map((entry) => entry.square)
+        : [];
     return {
+      threatened,
       lastMove: last ? { from: last.from, to: last.to } : null,
       check: status.check ? session.kingSquare(status.turn) : null,
       hint: hintMove ? { from: hintMove.from, to: hintMove.to } : null,
@@ -351,11 +363,13 @@ export async function bootstrap(root) {
     const progress = el('progress', { max: nodes.length + 1, value: 0, style: { width: '100%' } });
     const label = el('p.dialog__subtitle', { text: `Analysing ${nodes.length} positions…` });
     const controller = new AbortController();
+    const finished = new AbortController();
     const dialog = showDialog({
       title: 'Game review',
       body: [label, progress],
       actions: [{ label: 'Stop', value: 'stop' }],
       dismissible: false,
+      closeSignal: finished.signal,
     }).then((value) => {
       if (value === 'stop') controller.abort();
       return value;
@@ -374,7 +388,7 @@ export async function bootstrap(root) {
     });
 
     // Close the progress dialog however it ended.
-    document.querySelector('dialog[open]')?.close();
+    finished.abort();
     await dialog;
     if (!completed) return;
 
@@ -889,6 +903,10 @@ export async function bootstrap(root) {
         }),
         toggle('Vibration on mobile', settings.haptics, (on) => {
           settings.haptics = on;
+        }),
+        toggle('Warn about pieces I can lose', settings.coachHints, (on) => {
+          settings.coachHints = on;
+          board.setHighlights(highlightState());
         }),
         toggle('Live evaluation bar', settings.liveAnalysis, async (on) => {
           settings.liveAnalysis = on;

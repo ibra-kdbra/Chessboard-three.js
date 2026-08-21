@@ -261,6 +261,20 @@ export class Board2D extends Emitter {
       this.#tint(ctx, metrics, state.premove.from, palette.premove, 0.35);
       this.#tint(ctx, metrics, state.premove.to, palette.premove, 0.35);
     }
+    for (const square of state.threatened ?? []) {
+      const { x, y } = this.#squareOrigin(square, metrics);
+      ctx.save();
+      ctx.strokeStyle = rgba(palette.check, 0.7);
+      ctx.lineWidth = Math.max(1.5, metrics.square * 0.05);
+      ctx.setLineDash([metrics.square * 0.12, metrics.square * 0.08]);
+      ctx.strokeRect(
+        x + ctx.lineWidth,
+        y + ctx.lineWidth,
+        metrics.square - ctx.lineWidth * 2,
+        metrics.square - ctx.lineWidth * 2,
+      );
+      ctx.restore();
+    }
     if (this.hover) this.#tint(ctx, metrics, this.hover, palette.hover, 0.1);
     if (state.check) this.#drawCheckGlow(ctx, metrics, state.check);
 

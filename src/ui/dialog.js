@@ -15,7 +15,14 @@ import { PROMOTION_TYPES } from '../core/constants.js';
  *           dismissible?: boolean }} spec
  * @returns {Promise<any>} the chosen action's value, or null if dismissed
  */
-export function showDialog({ title, subtitle, body, actions = [], dismissible = true }) {
+export function showDialog({
+  title,
+  subtitle,
+  body,
+  actions = [],
+  dismissible = true,
+  closeSignal,
+}) {
   const dialog = el('dialog.dialog', { 'aria-labelledby': 'dialog-title' });
   let settle;
   const answer = new Promise((resolve) => {
@@ -69,6 +76,14 @@ export function showDialog({ title, subtitle, body, actions = [], dismissible = 
     dialog.addEventListener('click', (event) => {
       if (event.target === dialog) close(null);
     });
+  }
+
+  // A progress dialog is dismissed by the work finishing, not by the reader.
+  // Calling dialog.close() directly fires neither a click nor a cancel event,
+  // so the promise would never settle and its awaiter would hang.
+  if (closeSignal) {
+    if (closeSignal.aborted) close(null);
+    else closeSignal.addEventListener('abort', () => close(null), { once: true });
   }
 
   document.body.append(dialog);

@@ -97,6 +97,20 @@ export function parseUciMove(uci) {
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 
+/**
+ * Tidies an engine's SAN into the form a player reads.
+ *
+ * Lozza writes castling as `0-0` and disambiguates pawn captures with the full
+ * origin square (`f2xe3`). Both are unambiguous but neither is what appears in
+ * a book.
+ */
+function toStandardSan(token) {
+  if (/^0-0-0$/i.test(token)) return 'O-O-O';
+  if (/^0-0$/i.test(token)) return 'O-O';
+  // A pawn capture only needs its origin FILE.
+  return token.replace(/^([a-h])[1-8](x[a-h][1-8])/, '$1$2');
+}
+
 /** True when the position has no legal continuation. */
 function isTerminal(fen) {
   try {
@@ -296,7 +310,7 @@ export class UciEngine extends Emitter {
       // caller does not try to read them as coordinates.
       info.pvFormat = 'san';
       // A trailing '#' is emitted as its own bogus token.
-      info.pv = info.pv.filter((token) => token !== '#' && token !== '+');
+      info.pv = info.pv.filter((token) => token !== '#' && token !== '+').map(toStandardSan);
     } else if (info.pv) {
       info.pvFormat = 'uci';
     }

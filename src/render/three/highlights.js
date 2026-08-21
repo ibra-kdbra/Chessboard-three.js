@@ -149,6 +149,10 @@ export class HighlightLayer {
       hover: new MeshPool(this.group, tint(this.palette.hover, 0.14)),
       premove: new MeshPool(this.group, tint(this.palette.premove, 0.4)),
       hint: new MeshPool(this.group, tint(this.palette.hint, 0.45)),
+      threatened: new MeshPool(
+        this.group,
+        () => new Mesh(this.geometries.captureRing, flatMaterial(this.palette.check, 0.55)),
+      ),
       legal: new MeshPool(
         this.group,
         () => new Mesh(this.geometries.dot, flatMaterial(this.palette.legal, 0.75)),
@@ -180,6 +184,7 @@ export class HighlightLayer {
       hint: this.palette.hint,
       legal: this.palette.legal,
       legalCapture: this.palette.legalCapture,
+      threatened: this.palette.check,
     };
     for (const [key, pool] of Object.entries(this.pools)) {
       for (const mesh of pool.items) mesh.material.color.set(colors[key]);
@@ -199,7 +204,7 @@ export class HighlightLayer {
    * @param {{ selected?: string|null, legal?: Array<{to: string, capture: boolean}>,
    *           lastMove?: {from: string, to: string}|null, check?: string|null,
    *           hover?: string|null, premove?: {from: string, to: string}|null,
-   *           hint?: {from: string, to: string}|null }} state
+   *           hint?: {from: string, to: string}|null, threatened?: string[] }} state
    */
   update(state = {}) {
     for (const pool of Object.values(this.pools)) pool.begin();
@@ -218,6 +223,9 @@ export class HighlightLayer {
       for (const square of [state.premove.from, state.premove.to]) {
         this.#place(this.pools.premove.next(), square);
       }
+    }
+    for (const square of state.threatened ?? []) {
+      this.#place(this.pools.threatened.next(), square, OVERLAY_Y + 0.006);
     }
     if (state.hover) this.#place(this.pools.hover.next(), state.hover);
     if (state.selected) this.#place(this.pools.selected.next(), state.selected, OVERLAY_Y + 0.004);

@@ -11,8 +11,26 @@
  * It runs on its own engine instance, on its own worker, so analysing never
  * competes with the opponent for a search slot.
  */
+import { Chess } from 'chess.js';
 import { Emitter } from '../core/emitter.js';
 import { UciEngine } from './uciEngine.js';
+
+/**
+ * The score of a finished position, which no engine needs to be asked for — and
+ * which some will hang on if you do.
+ */
+function terminalEvaluation(fen) {
+  let chess;
+  try {
+    chess = new Chess(fen);
+  } catch {
+    return null;
+  }
+  if (!chess.isGameOver()) return null;
+  if (!chess.isCheckmate()) return { type: 'cp', value: 0 };
+  // The side to move is mated, so the other side delivered it.
+  return { type: 'mate', value: chess.turn() === 'w' ? -1 : 1, terminal: true };
+}
 
 /** Successive budgets for one position, in ms. Short first, so the bar moves. */
 const LADDER = [120, 300, 700, 1400, 2400];
@@ -142,19 +160,31 @@ export class Analyser extends Emitter {
     try {
       for (const [index, entry] of positions.entries()) {
         if (signal?.aborted) return false;
-        let result;
-        try {
-          result = await this.engine.search(entry.fen, { movetime });
-        } catch {
-          return false;
+
+        // The last position of a decisive game is checkmate, and Lozza never
+        // returns from a search of one. Its score is known anyway.
+        const terminal = terminalEvaluation(entry.fen);
+        if (terminal) {
+          entry.node.evaluation = terminal;
+          onProgress?.(index + 1, positions.length);
+          continue;
         }
-        if (result.info?.score) {
-          const sign = entry.turn === 'w' ? 1 : -1;
-          entry.node.evaluation = {
-            ...result.info.score,
-            value: result.info.score.value * sign,
-          };
-          entry.node.pv = result.lines[0]?.pv ?? null;
+
+        try {
+          const result = await this.engine.search(entry.fen, { movetime });
+          if (result.info?.score) {
+            const sign = entry.turn === 'w' ? 1 : -1;
+            entry.node.evaluation = {
+              ...result.info.score,
+              value: result.info.score.value * sign,
+            };
+            entry.node.pv = result.lines[0]?.pv ?? null;
+          }
+        } catch (error) {
+          // An abort ends the pass; one position the engine could not score
+          // does not.
+          if (signal?.aborted) return false;
+          this.emit('skipped', { fen: entry.fen, error });
         }
         onProgress?.(index + 1, positions.length);
       }

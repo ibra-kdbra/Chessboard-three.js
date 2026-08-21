@@ -80,7 +80,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   playerColor: 'w',
   autoFlip: false,
   confirmMoves: false,
-  coachHints: false,
+  coachHints: true,
 });
 
 export function loadSettings() {
