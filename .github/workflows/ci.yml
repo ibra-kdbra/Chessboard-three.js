@@ -25,7 +25,7 @@ jobs:
       - run: npm test
 
   assets:
-    name: Assets match the reference loader
+    name: Generated assets and vendored code are up to date
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,7 +40,15 @@ jobs:
       - run: npm run assets
       - run: node tools/verify-models.mjs
       - name: Converted models are unchanged
-        run: git diff --exit-code -- assets/models
+        run: git add -A assets/models && git diff --cached --exit-code -- assets/models
+
+      # vendor/ is what the import map actually serves; package.json is what the
+      # tests resolve. Without this the two drift silently: a dependency bump
+      # would be tested green and then deployed as the old copy.
+      # Last in the job — vendor.mjs rebuilds the whole tree.
+      - run: npm run vendor
+      - name: Vendored dependencies match package.json
+        run: git add -A vendor && git diff --cached --exit-code -- vendor
 
   browser:
     name: Browser tests

@@ -9,7 +9,7 @@
  *   node tools/vendor.mjs          # minified three build (what we ship)
  *   node tools/vendor.mjs --dev    # readable three build, for debugging
  */
-import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, rm, rename, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,13 +86,18 @@ async function du(dir) {
 
 const dev = process.argv.includes('--dev');
 
-await rm(VENDOR, { recursive: true, force: true });
+// Build into a staging tree and swap at the end. Deleting vendor/ up front
+// meant any failure below — a missing node_modules, an addon graph that moved
+// in a three upgrade — left the site with no runtime at all, 404ing on the
+// import map until someone thought to `git checkout -- vendor`.
+const STAGE = `${VENDOR}.tmp`;
+await rm(STAGE, { recursive: true, force: true });
 
 // --- three core build -------------------------------------------------------
 // The minified build is ~3.4x smaller over the wire; --dev swaps in the readable
 // one. three.module*.js imports three.core*.js relatively, so both must match.
 const threeVersion = await pkgVersion('three');
-const threeDest = path.join(VENDOR, 'three');
+const threeDest = path.join(STAGE, 'three');
 await mkdir(threeDest, { recursive: true });
 const suffix = dev ? '' : '.min';
 for (const stem of ['three.module', 'three.core']) {
@@ -114,7 +119,7 @@ const addons = await copyGraph(
 
 // --- chess.js ---------------------------------------------------------------
 const chessVersion = await pkgVersion('chess.js');
-const chessDest = path.join(VENDOR, 'chess.js');
+const chessDest = path.join(STAGE, 'chess.js');
 await mkdir(chessDest, { recursive: true });
 await writeFile(
   path.join(chessDest, 'chess.js'),
@@ -129,7 +134,12 @@ const manifest = {
   addonEntries: ADDON_ENTRIES,
   addonFileCount: addons.size,
 };
-await writeFile(path.join(VENDOR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+await writeFile(path.join(STAGE, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+
+// Everything succeeded, so the swap is safe. Replacing the whole tree keeps the
+// old behaviour of dropping addons a version bump no longer needs.
+await rm(VENDOR, { recursive: true, force: true });
+await rename(STAGE, VENDOR);
 
 console.log(`three@${threeVersion} (${dev ? 'dev' : 'min'})  chess.js@${chessVersion}`);
 console.log(`addons: ${addons.size} files`);

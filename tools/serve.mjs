@@ -48,6 +48,13 @@ const server = http.createServer(async (req, res) => {
   try {
     let info = await stat(filePath);
     if (info.isDirectory()) {
+      // Without the trailing slash the browser resolves the page's relative
+      // URLs against the parent, so /legacy loaded its HTML and 404'd every
+      // stylesheet and script it asked for.
+      if (!url.pathname.endsWith('/')) {
+        res.writeHead(301, { Location: `${url.pathname}/${url.search}` }).end();
+        return;
+      }
       filePath = path.join(filePath, 'index.html');
       info = await stat(filePath);
     }

@@ -13,7 +13,7 @@ licences, which are **not** the project's MIT licence.
 
 ### Stockfish and the GPL
 
-`js/stockfish.js` is a compiled build of Stockfish 5, released under the GNU
+`engines/stockfish.js` is a compiled build of Stockfish 5, released under the GNU
 General Public License version 3. The full licence text is at
 [`licenses/GPL-3.0.txt`](licenses/GPL-3.0.txt).
 
@@ -28,7 +28,7 @@ What that means for anyone redistributing this repository:
   messages, so the rest of this project is not a derivative work of it. It is
   still _distributed_ with it, which is why this notice exists.
 
-If you would rather not distribute GPL code, delete `js/stockfish.js` and remove
+If you would rather not distribute GPL code, delete `engines/stockfish.js` and remove
 the `stockfish` entry from `src/engine/engineProfiles.js`. The game runs on
 Lozza and p4wn alone.
 

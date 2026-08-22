@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Chess } from 'chess.js';
+import { format, resolveConfig } from 'prettier';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = process.argv[2];
@@ -131,10 +132,15 @@ export const OPENING_TABLE = ${JSON.stringify(table)};
 export const MAX_BOOK_PLY = ${maxPly};
 `;
 
-await mkdir(path.join(ROOT, 'src/data'), { recursive: true });
-await writeFile(path.join(ROOT, 'src/data/openings.js'), module);
+// Through the repo's own prettier config: `JSON.stringify` puts the whole table
+// on one 35k-character line, which fails `npm run check` and makes every future
+// diff of the book unreviewable.
+const target = path.join(ROOT, 'src/data/openings.js');
+await mkdir(path.dirname(target), { recursive: true });
+const output = await format(module, { ...(await resolveConfig(target)), filepath: target });
+await writeFile(target, output);
 
 console.log(
   `openings: ${unique.length} lines (${rejected} rejected), longest ${maxPly} plies, ` +
-    `${(module.length / 1024).toFixed(1)}KB`,
+    `${(output.length / 1024).toFixed(1)}KB`,
 );

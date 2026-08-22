@@ -7,3 +7,6 @@ playwright-report/
 
 # Scratch space for ad-hoc investigation scripts.
 .probe/
+
+# Staging tree for tools/vendor.mjs; only present if a run failed part-way.
+vendor.tmp/
