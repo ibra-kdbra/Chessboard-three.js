@@ -275,7 +275,8 @@ export class Board2D extends Emitter {
       );
       ctx.restore();
     }
-    if (this.hover) this.#tint(ctx, metrics, this.hover, palette.hover, 0.1);
+    const hover = this.hover ?? state.hover;
+    if (hover) this.#tint(ctx, metrics, hover, palette.hover, 0.1);
     if (state.check) this.#drawCheckGlow(ctx, metrics, state.check);
 
     const selected = this.selected ?? state.selected;
@@ -546,7 +547,10 @@ export class Board2D extends Emitter {
 
   setHighlights(state) {
     this.highlights = state ?? {};
-    this.selected = state?.selected ?? this.selected;
+    // Honour an explicit null — coalescing it away meant a keyboard deselect
+    // left the old ring drawn, and the next Enter re-selected instead of
+    // moving. A caller that omits the key still keeps the board's own value.
+    if (state && 'selected' in state) this.selected = state.selected ?? null;
     this.#dirty = true;
   }
 

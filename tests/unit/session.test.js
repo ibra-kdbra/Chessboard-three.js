@@ -123,6 +123,36 @@ function stubOpponent(session, sanQueue) {
   return () => release?.();
 }
 
+describe('Session load failures', () => {
+  it('keeps the live game listening when a corrupt payload is rejected', () => {
+    const session = makeSession();
+    const heard = { move: 0, gameover: 0 };
+    session.on('move', () => heard.move++);
+    session.on('gameover', () => heard.gameover++);
+
+    // The FEN branch of an import: not a PGN, not a position either.
+    expect(() => session.loadState({ startFen: 'hello-world', moves: [] })).toThrow();
+
+    // The rejected load must not have deafened the session on its way out.
+    for (const san of ['f3', 'e5', 'g4', 'Qh4#']) session.state.move(san);
+    expect(session.state.isCheckmate).toBe(true);
+    expect(heard.move).toBe(4);
+    expect(heard.gameover).toBe(1);
+  });
+
+  it('leaves the game in progress when a PGN import is rejected', () => {
+    const session = makeSession();
+    for (const san of ['e4', 'e5', 'Nf3', 'Nc6']) session.state.move(san);
+
+    // 3. Qxf7 is not legal here, so the parse fails partway.
+    expect(() => session.loadPgn('1. e4 e5 2. Nf3 Nc6 3. Qxf7')).toThrow();
+
+    // The board still shows this game, so the session must still hold it.
+    expect(session.state.ply).toBe(4);
+    expect(session.state.pgn()).toContain('Nc6');
+  });
+});
+
 describe('Session turn handling', () => {
   it('starts the clock for the first move of a timed game', async () => {
     const session = makeSession({ timeControl: 'blitz-3+0' });

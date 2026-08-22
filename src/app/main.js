@@ -123,6 +123,8 @@ export async function bootstrap(root) {
 
   let selected = null;
   let hintMove = null;
+  /** The keyboard board cursor, drawn as a hover tint. Null when unfocused. */
+  let cursorSquare = null;
 
   // A second engine on its own worker, so analysing never competes with the
   // opponent for a search slot.
@@ -146,6 +148,9 @@ export async function bootstrap(root) {
         : [];
     return {
       threatened,
+      // The keyboard cursor lives here so an unrelated refresh — a hint, a
+      // coach update — does not wipe the square the user is standing on.
+      hover: cursorSquare,
       lastMove: last ? { from: last.from, to: last.to } : null,
       check: status.check ? session.kingSquare(status.turn) : null,
       hint: hintMove ? { from: hintMove.from, to: hintMove.to } : null,
@@ -209,7 +214,10 @@ export async function bootstrap(root) {
 
   // ------------------------------------------------------------- move flow
   async function attemptMove(from, to) {
-    if (!session.canMove && !session.thinking) {
+    // Only bail at the live end of a finished game. `canMove` is also false
+    // while reviewing, which made dragging a piece from an earlier position do
+    // nothing — even though typing the same move there branches happily.
+    if (session.state.isFinished && !session.thinking) {
       board.clearSelection();
       selected = null;
       return;
@@ -505,6 +513,10 @@ export async function bootstrap(root) {
     takeback: async () => {
       if (session.state.ply === 0) return;
       await session.takeback();
+      // Taking back un-finishes the game, so the next result deserves its own
+      // ceremony. Leaving the guard set ended the game in silence: no sound,
+      // no dialog, and no library entry.
+      ceremonyDone = false;
       syncBoard();
       persist();
     },
@@ -544,7 +556,8 @@ export async function bootstrap(root) {
     boardElement: boardHost,
     onAction: (action) => actions[action]?.(),
     onCursor: (square) => {
-      board.setHighlights({ ...highlightState(), hover: square });
+      cursorSquare = square;
+      board.setHighlights(highlightState());
       if (!square) return;
       // Silent, the cursor was unusable: there was no way to know it had
       // reached e5 rather than e1 before committing to a move.
@@ -587,6 +600,12 @@ export async function bootstrap(root) {
   });
 
   function persist() {
+    // A finished game has been written to the library and deliberately dropped
+    // from the in-progress slot. Re-saving it here — the unload handler is the
+    // usual culprit — brought it back on the next load, and re-finishing it
+    // filed a second copy. Note this is the ceremony flag, not a position test:
+    // stepping back through the eval graph makes the position playable again.
+    if (ceremonyDone) return;
     store.saveCurrentGame(session.toJSON());
   }
 

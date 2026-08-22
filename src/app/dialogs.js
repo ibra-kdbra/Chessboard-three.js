@@ -339,6 +339,12 @@ export function createDialogs(context) {
   }
 
   async function showSettings() {
+    // The piece-set options and the Camera row are built for whichever renderer
+    // is mounted right now. Switching Board swaps it underneath us, so close
+    // and reopen against the new one rather than leaving stale controls that
+    // throw when used.
+    const swap = new AbortController();
+    let swapped = false;
     const themeSelect = el(
       'select.select',
       {},
@@ -423,8 +429,10 @@ export function createDialogs(context) {
       else settings.pieceSet2d = pieceSelect.value;
       board().setPieceSet(pieceSelect.value);
     });
-    dimensionSelect.addEventListener('change', () => {
-      setDimensions(Number(dimensionSelect.value));
+    dimensionSelect.addEventListener('change', async () => {
+      await setDimensions(Number(dimensionSelect.value));
+      swapped = true;
+      swap.abort();
     });
     cameraSelect.addEventListener('change', () => {
       settings.cameraMode = cameraSelect.value;
@@ -441,6 +449,7 @@ export function createDialogs(context) {
 
     await showDialog({
       title: 'Settings',
+      closeSignal: swap.signal,
       body: [
         field('Board', dimensionSelect),
         field('Board theme', themeSelect),
@@ -458,7 +467,10 @@ export function createDialogs(context) {
         }),
         toggle('Board coordinates', settings.showCoordinates, (on) => {
           settings.showCoordinates = on;
-          if (board().board.notation) board().board.notation.visible = on;
+          // Through the contract both renderers implement: reaching into the
+          // 3D scene graph threw on the 2D board, and skipped the config the
+          // 3D board rereads whenever the theme rebuilds it.
+          board().setShowNotation(on);
         }),
         toggle('High-contrast highlights', settings.highContrast, (on) => {
           settings.highContrast = on;
@@ -491,6 +503,10 @@ export function createDialogs(context) {
       actions: [{ label: 'Done', value: 'done', variant: 'primary', autofocus: true }],
     });
     store.saveSettings(settings);
+    // Reopened rather than recursed into blindly: the new body reads the
+    // settings just saved, so the Board select shows what is actually mounted.
+    if (swapped) return showSettings();
+    return undefined;
   }
 
   function showShortcutHelp() {

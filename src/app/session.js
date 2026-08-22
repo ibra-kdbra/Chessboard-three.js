@@ -80,13 +80,22 @@ export class Session extends Emitter {
   /** Boots (or replaces) the engine worker. */
   async useEngine(id) {
     const profile = getEngineProfile(id);
-    this.engine?.dispose();
-    this.engine = new UciEngine({ profile, workerFactory: this.workerFactory });
-    this.engine.on('info', (info) => {
+    // Start the replacement before discarding what works. Disposing first meant
+    // a worker that failed to load left `engine` dead and `opponent` bound to
+    // the disposed one — the computer then never moved again, silently.
+    const next = new UciEngine({ profile, workerFactory: this.workerFactory });
+    next.on('info', (info) => {
       if (this.thinking) this.emit('evaluation', { info, turn: this.state.turn });
     });
-    await this.engine.start();
-    await this.engine.newGame();
+    try {
+      await next.start();
+      await next.newGame();
+    } catch (error) {
+      next.dispose();
+      throw error;
+    }
+    this.engine?.dispose();
+    this.engine = next;
     this.opponent = new Opponent({ engine: this.engine, level: this.settings.difficulty ?? 5 });
     this.settings.engine = profile.id;
     this.emit('engine', { profile, capabilities: this.engine.capabilities });
@@ -379,8 +388,13 @@ export class Session extends Emitter {
    * cannot be done by assigning `session.state` from outside.
    */
   loadState(json, { mode = this.mode, playerColor = this.playerColor } = {}) {
+    // Build the replacement before touching the live game. `fromJSON` throws on
+    // a malformed start FEN, and tearing the listeners down first left the old
+    // state in place with nothing attached to it — the session went silent for
+    // the rest of the page's life: no autosave, no announcements, no gameover.
+    const next = GameState.fromJSON(json);
     this.state.removeAllListeners();
-    this.state = GameState.fromJSON(json);
+    this.state = next;
     this.#wireState();
     this.mode = mode;
     this.playerColor = playerColor;
@@ -394,11 +408,15 @@ export class Session extends Emitter {
 
   /** Replaces the game with one parsed from PGN. */
   loadPgn(text) {
+    // Parse into a throwaway game first: a rejected import must leave the game
+    // in progress exactly as it was, not silently reset it to move one behind a
+    // board that is still showing the old position.
+    const next = new GameState();
+    next.loadPgn(text);
+    next.toEnd();
     this.state.removeAllListeners();
-    this.state = new GameState();
+    this.state = next;
     this.#wireState();
-    this.state.loadPgn(text);
-    this.state.toEnd();
     this.emit('change', { node: this.state.node, reason: 'load' });
     this.emit('status', this.status());
     return this.state;

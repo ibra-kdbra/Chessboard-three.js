@@ -529,7 +529,10 @@ export class Board3D extends Emitter {
   #refreshHighlights() {
     this.highlights.update({
       ...this.#highlightState,
-      hover: this.#hover,
+      // The live pointer hover wins while the mouse is over a square; the
+      // keyboard cursor arrives through the state and shows the rest of the
+      // time. Dropping it left the cursor announced but never drawn.
+      hover: this.#hover ?? this.#highlightState.hover ?? null,
       selected: this.#selected ?? this.#highlightState.selected ?? null,
     });
     this.#dirty = true;
