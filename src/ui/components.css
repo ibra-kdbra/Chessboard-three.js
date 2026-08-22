@@ -57,6 +57,14 @@
 
 /* ---------------------------------------------------------------- clocks -- */
 
+.clock[data-untimed='true'] .clock__time {
+  display: none;
+}
+
+.clock[data-untimed='true'] {
+  padding-block: var(--space-2);
+}
+
 .clock {
   display: flex;
   align-items: center;

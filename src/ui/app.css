@@ -62,14 +62,24 @@ body {
   display: grid;
   /*
    * The column is stated explicitly. Left implicit it is `auto`, which sizes to
-   * max-content — so the widest thing anywhere inside (the mobile rail's row of
-   * buttons) sets the width of the whole app, and the board overflows the
-   * viewport by whatever that comes to.
+   * max-content — so the widest thing anywhere inside sets the width of the
+   * whole app, and the board overflows the viewport by whatever that comes to.
    */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--header-height) 1fr;
   height: 100dvh;
   overflow: hidden;
+}
+
+/*
+ * The board sits flush with the bottom of the viewport, so its focus ring — an
+ * outset box-shadow — was clipped away on that edge only, leaving a keyboard
+ * user a ring on three sides. Inset the ring for this one element instead.
+ */
+.stage__board:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px var(--surface-0),
+    inset 0 0 0 4px var(--accent);
 }
 
 .app__body {
@@ -136,14 +146,6 @@ body {
   letter-spacing: -0.01em;
 }
 
-.topbar__brand span {
-  color: var(--text-3);
-  font-weight: var(--weight-normal);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
 .topbar__spacer {
   flex: 1;
 }
@@ -154,10 +156,18 @@ body {
   min-width: 0;
 }
 
-.button__icon {
-  display: none;
-  font-size: 1rem;
-  line-height: 1;
+.topbar__utilities {
+  display: flex;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  margin-left: var(--space-1);
+  border-left: 1px solid var(--border);
+}
+
+/* Drawn icons, one 24-grid and one stroke weight, sized by the button. */
+.icon {
+  flex: none;
+  display: block;
 }
 
 /* --------------------------------------------------------------- controls -- */
@@ -168,7 +178,10 @@ body {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  min-height: 2.25rem;
+  /* The 44px touch floor. Controls measured 36px (and 32px wide on a phone),
+     which is 67% of the minimum target area on the surface where pointing is
+     least precise. */
+  min-height: 2.75rem;
   background: var(--surface-3);
   color: var(--text-1);
   border: 1px solid var(--border);
@@ -192,8 +205,16 @@ body {
   transform: translateY(1px);
 }
 
+/*
+ * Opacity alone was the whole disabled signal, and it dropped the glyph to
+ * 2.67:1 against its own background — unreadable rather than obviously off,
+ * and invisible on touch where there is no cursor to change.
+ */
 .button:disabled {
-  opacity: 0.45;
+  opacity: 1;
+  color: var(--text-disabled);
+  background: transparent;
+  border-color: transparent;
   cursor: not-allowed;
 }
 
@@ -218,7 +239,19 @@ body {
   color: var(--text-1);
 }
 
-.button--danger:hover:not(:disabled) {
+/*
+ * Resign at rest used to fall through to the full filled `.button` treatment
+ * while every neighbour was quiet — making the one irreversible control the
+ * loudest thing in the row. It now reads as danger only once you are on it.
+ */
+.button--danger {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
+.button--danger:hover:not(:disabled),
+.button--danger:focus-visible {
   background: color-mix(in oklab, var(--negative) 18%, var(--surface-3));
   border-color: var(--negative);
   color: var(--negative);
@@ -226,8 +259,8 @@ body {
 
 .button--icon {
   padding: 0;
-  width: 2.25rem;
-  min-height: 2.25rem;
+  width: 2.75rem;
+  min-height: 2.75rem;
 }
 
 .button-row {
@@ -257,7 +290,7 @@ body {
   appearance: none;
   width: 100%;
   padding: var(--space-2) var(--space-5) var(--space-2) var(--space-3);
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -320,6 +353,8 @@ body {
 
 .range {
   width: 100%;
+  /* The bare input renders a 16px-tall target; the floor is 44. */
+  min-height: 2.75rem;
   accent-color: var(--accent);
 }
 
@@ -333,11 +368,38 @@ body {
   border-left: 1px solid var(--border);
 }
 
-.panel__scroll {
+/*
+ * Pinned. The clocks, status and engine readout used to share one scroller with
+ * the move list, and `flex: 1` on the moves section was inert against a block
+ * parent — so a long game simply pushed the clocks off the top of the screen.
+ */
+.panel__fixed {
+  flex: none;
+}
+
+/* The only thing in the panel that scrolls, and it owns its own scroller so
+   bringing the current move into view no longer drags the clocks away. */
+.panel__moves {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.panel__moves .movelist {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
+  /* Room for the focus ring on the last row, which the scrollport used to cut. */
+  padding-bottom: var(--space-1);
+}
+
+.panel__clocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .panel__section {
@@ -358,17 +420,41 @@ body {
   letter-spacing: 0.09em;
 }
 
-/* ----------------------------------------------------------------- rail --- */
+/* ------------------------------------------------------------ transport --- */
 
-.rail {
+/*
+ * Move navigation, attached to the move list it drives. It replaces a 56px left
+ * rail that spent 41% of its height empty and sat a screen's width away from
+ * the list it controlled.
+ */
+.transport {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  width: var(--rail-width);
-  padding: var(--space-3) 0;
-  background: var(--surface-1);
-  border-right: 1px solid var(--border);
+  flex: none;
+  padding: var(--space-2) 0 var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.transport__group {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* Hint and take back. Labelled, because as glyphs "take back" and "back one
+   move" were two similar marks with very different consequences. */
+.assist {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.assist .button {
+  flex: 1;
+  justify-content: center;
 }
 
 /* ------------------------------------------------------------ responsive -- */
@@ -393,13 +479,9 @@ body {
 }
 
 @media (max-width: 900px) {
-  /* Six labelled buttons do not fit across a narrow header, and the row simply
-     ran off the edge. Below this the labels go and the icons carry them; the
-     accessible name is on the button either way. */
-  .button__icon {
-    display: inline;
-  }
-
+  /* Six labelled buttons do not fit across a narrow header. Below this the
+     labels go and the icons carry them; the accessible name is on the button
+     either way. */
   .topbar__actions .button__label {
     position: absolute;
     width: 1px;
@@ -412,18 +494,13 @@ body {
 
   .topbar__actions .button {
     padding: var(--space-2);
-    min-width: 2.25rem;
-  }
-
-  .topbar__brand span {
-    display: none;
+    min-width: 2.75rem;
   }
 }
 
 @media (max-width: 640px) {
   :root {
-    --rail-width: 3rem;
-    --header-height: 2.75rem;
+    --header-height: 3.25rem;
   }
 
   /* Seven icon buttons plus the wordmark is still more than a phone header
@@ -448,10 +525,12 @@ body {
     display: none;
   }
 
+  /* Narrow, but never below the touch floor: these measured 32px wide before,
+     and the last of them was pushed clean off the right edge of the screen. */
   .topbar__actions .button {
     flex: none;
-    min-width: 2rem;
-    padding: var(--space-1) var(--space-2);
+    min-width: 2.75rem;
+    padding: var(--space-1);
   }
 
   /*
@@ -489,7 +568,9 @@ body {
     min-height: 0;
   }
 
-  .panel__scroll {
+  /* The page scrolls on a phone, so the move list does not need its own
+     scroller — and a nested one would trap the gesture. */
+  .panel__moves .movelist {
     overflow: visible;
   }
 
@@ -499,22 +580,6 @@ body {
     max-height: 55dvh;
     margin-inline: auto;
     width: 100%;
-  }
-
-  .rail {
-    flex-direction: row;
-    width: auto;
-    min-width: 0;
-    padding: var(--space-2) var(--space-1);
-    border-right: none;
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    justify-content: space-between;
-    overflow-x: auto;
-  }
-
-  .rail .button {
-    flex: none;
   }
 
   .panel {

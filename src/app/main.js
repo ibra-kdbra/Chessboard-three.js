@@ -20,6 +20,7 @@ import { SoundEngine } from '../audio/soundEngine.js';
 import { ENGINE_PROFILES } from '../engine/engineProfiles.js';
 import { Analyser } from '../engine/analyser.js';
 import { el, announce, replaceChildren } from '../ui/dom.js';
+import { icon } from '../ui/icons.js';
 import { EvalBar } from '../ui/evalBar.js';
 import { ClockFace } from '../ui/clockFace.js';
 import { MoveList } from '../ui/moveList.js';
@@ -63,6 +64,8 @@ export async function bootstrap(root) {
     },
   });
 
+  const transport = buildTransport();
+  const assist = buildAssist();
   const panel = buildPanel({
     moveList,
     enginePanel,
@@ -70,18 +73,16 @@ export async function bootstrap(root) {
     blackClock,
     openingLine,
     statusLine,
+    transport,
+    assist,
   });
-  const rail = buildRail();
 
   const topbar = buildTopBar();
   root.append(
     el('div.app', {}, [
       topbar.element,
       el('div.app__body', {}, [
-        el('div.stage', {}, [
-          rail.element,
-          el('div.stage__frame', {}, [evalBar.element, boardHost]),
-        ]),
+        el('div.stage', {}, [el('div.stage__frame', {}, [evalBar.element, boardHost])]),
         panel.element,
       ]),
     ]),
@@ -209,7 +210,16 @@ export async function bootstrap(root) {
         : session.state.node.evaluation;
     evalBar.set(evaluation);
 
-    rail.setBusy(status.thinking);
+    // Every control that can be pointless right now says so.
+    transport.setState({
+      atStart: session.state.ply === 0,
+      atEnd: !session.state.isReviewing,
+    });
+    assist.setState({
+      thinking: status.thinking,
+      canHint: !status.result.over && !session.state.isReviewing,
+      canTakeback: session.state.ply > 0,
+    });
   }
 
   // ------------------------------------------------------------- move flow
@@ -528,6 +538,7 @@ export async function bootstrap(root) {
     },
     typing: () => {},
     help: () => dialogs.showShortcutHelp(),
+    settings: () => dialogs.showSettings(),
     resign: () => dialogs.confirmResign(),
     review: () => runPostGameReview(),
     draw: () => dialogs.offerDraw(),
@@ -540,13 +551,22 @@ export async function bootstrap(root) {
 
   topbar.setActions(
     [
-      ['Games', 'Browse your finished games', 'library', '🗀'],
-      ['Import', 'Import a PGN game or FEN position', 'importGame', '↓'],
-      ['Export', 'Copy or download this game as PGN', 'exportGame', '↑'],
-      ['Share', 'Copy a link to this game', 'share', '↗'],
-      ['Draw', 'Offer a draw', 'draw', '½'],
-      ['Resign', 'Resign the game', 'resign', '⚑', 'danger'],
-      ['New game', 'Start a new game', 'newGame', '＋', 'primary'],
+      ['Games', 'Browse your finished games', 'library', 'library'],
+      ['Import', 'Import a PGN game or FEN position', 'importGame', 'import'],
+      ['Export', 'Copy or download this game as PGN', 'exportGame', 'export'],
+      ['Share', 'Copy a link to this game', 'share', 'share'],
+      ['Draw', 'Offer a draw', 'draw', 'draw'],
+      ['Resign', 'Resign the game', 'resign', 'resign', 'danger'],
+      ['New game', 'Start a new game', 'newGame', 'newGame', 'primary'],
+    ],
+    (action) => actions[action]?.(),
+  );
+  topbar.setUtilities(
+    [
+      // The shortcut sheet used to be reachable only by pressing the shortcut
+      // for it, which helps exactly the people who did not need it.
+      ['Keyboard shortcuts', 'Keyboard shortcuts (Shift ?)', 'help', 'help'],
+      ['Settings', 'Settings', 'settings', 'settings'],
     ],
     (action) => actions[action]?.(),
   );
@@ -594,10 +614,8 @@ export async function bootstrap(root) {
   });
 
   // -------------------------------------------------------------- controls
-  rail.bind(actions, {
-    onNewGame: () => dialogs.showNewGameDialog(),
-    onSettings: () => dialogs.showSettings(),
-  });
+  transport.bind(actions);
+  assist.bind(actions);
 
   function persist() {
     // A finished game has been written to the library and deliberately dropped
@@ -774,10 +792,12 @@ function applyInterfaceTheme(settings) {
 
 function buildTopBar() {
   const actions = el('div.topbar__actions');
+  const utilities = el('div.topbar__utilities');
   const element = el('header.topbar', {}, [
-    el('h1.topbar__brand', {}, ['chessboard3', el('span', { text: 'three.js chess' })]),
+    el('h1.topbar__brand', { text: 'chessboard3' }),
     el('div.topbar__spacer'),
     actions,
+    utilities,
   ]);
 
   return {
@@ -792,94 +812,172 @@ function buildTopBar() {
      */
     setActions(spec, onAction) {
       actions.replaceChildren(
-        ...spec.map(([label, title, action, icon, variant]) =>
-          el(
-            'button.button',
-            {
-              type: 'button',
-              class:
-                variant === 'primary'
-                  ? 'button--primary'
-                  : variant === 'danger'
-                    ? 'button--danger'
-                    : 'button--quiet',
-              title,
-              'aria-label': title,
-              on: { click: () => onAction(action) },
-            },
-            [
-              el('span.button__icon', { text: icon, 'aria-hidden': 'true' }),
-              el('span.button__label', { text: label }),
-            ],
-          ),
-        ),
+        ...spec.map(([label, title, action, iconName, variant]) => {
+          const button = el('button.button', {
+            type: 'button',
+            class:
+              variant === 'primary'
+                ? 'button--primary'
+                : variant === 'danger'
+                  ? 'button--danger'
+                  : 'button--quiet',
+            title,
+            'aria-label': label,
+            on: { click: () => onAction(action) },
+          });
+          button.append(icon(iconName, 16), el('span.button__label', { text: label }));
+          return button;
+        }),
+      );
+    },
+
+    /**
+     * The chrome that is not part of playing: help and settings. Separated from
+     * the game actions so a once-a-session control never sits beside one that
+     * ends the game.
+     */
+    setUtilities(spec, onAction) {
+      utilities.replaceChildren(
+        ...spec.map(([label, title, action, iconName]) => {
+          const button = el('button.button.button--quiet.button--icon', {
+            type: 'button',
+            title,
+            'aria-label': label,
+            on: { click: () => onAction(action) },
+          });
+          button.append(icon(iconName));
+          return button;
+        }),
       );
     },
   };
 }
 
-function buildRail() {
-  const make = (label, title, action) =>
-    el('button.button.button--quiet.button--icon', {
+/**
+ * Move navigation, as a strip that lives on the move list.
+ *
+ * It used to be four buttons in a left rail, a screen's width away from the
+ * move list they actually drive — press on the left, read the result on the
+ * right, press again. Attaching them to the list removes that round trip, and
+ * is where every chess player already looks for them.
+ */
+function buildTransport() {
+  const make = (name, label, hint, action) => {
+    const button = el('button.button.button--quiet.button--icon', {
       type: 'button',
-      title,
-      'aria-label': title,
-      text: label,
+      title: `${label} (${hint})`,
+      'aria-label': label,
       dataset: { action },
     });
+    button.append(icon(name));
+    return button;
+  };
 
   const buttons = [
-    make('⟪', 'Jump to the start', 'start'),
-    make('‹', 'Back one move', 'back'),
-    make('›', 'Forward one move', 'forward'),
-    make('⟫', 'Jump to the latest move', 'end'),
-    make('⇅', 'Flip the board', 'flip'),
-    make('◫', 'Switch between 2D and 3D', 'dimensions'),
-    make('◎', 'Hint', 'hint'),
-    make('↩', 'Take back', 'takeback'),
-    make('＋', 'New game', 'new'),
-    make('⚙', 'Settings', 'settings'),
+    make('first', 'Jump to the start', 'Home', 'start'),
+    make('previous', 'Back one move', '←', 'back'),
+    make('next', 'Forward one move', '→', 'forward'),
+    make('last', 'Jump to the latest move', 'End', 'end'),
+    make('flip', 'Flip the board', 'Shift F', 'flip'),
   ];
-  const element = el('nav.rail', { 'aria-label': 'Game controls' }, buttons);
+  const byAction = Object.fromEntries(buttons.map((b) => [b.dataset.action, b]));
+
+  const element = el('div.transport', { role: 'toolbar', 'aria-label': 'Move navigation' }, [
+    el('div.transport__group', {}, buttons.slice(0, 4)),
+    byAction.flip,
+  ]);
 
   return {
     element,
-    setBusy(busy) {
-      for (const button of buttons) {
-        if (['hint', 'takeback'].includes(button.dataset.action)) button.disabled = busy;
-      }
+    /**
+     * Greys out what would do nothing. These used to stay lit at both ends of
+     * the game, so a click on "back" at move one was a silent no-op — and a
+     * screen reader announced an actionable control that was not.
+     */
+    setState({ atStart, atEnd }) {
+      byAction.start.disabled = atStart;
+      byAction.back.disabled = atStart;
+      byAction.forward.disabled = atEnd;
+      byAction.end.disabled = atEnd;
     },
-    bind(actions, { onNewGame, onSettings }) {
+    bind(actions) {
       element.addEventListener('click', (event) => {
         const button = event.target.closest('[data-action]');
-        if (!button) return;
-        const name = button.dataset.action;
-        if (name === 'new') return onNewGame();
-        if (name === 'settings') return onSettings();
-        actions[name]?.();
+        if (button && !button.disabled) actions[button.dataset.action]?.();
       });
     },
   };
 }
 
-function buildPanel({ moveList, enginePanel, whiteClock, blackClock, openingLine, statusLine }) {
+/**
+ * Hint and take back: the two controls that change or reveal the game.
+ *
+ * Both carry a permanent label. As icons they were unreadable — and worse,
+ * "take back" and "back one move" are the same idea in a player's head with
+ * very different consequences, so leaving them as two similar glyphs two slots
+ * apart invited exactly the wrong click.
+ */
+function buildAssist() {
+  const make = (name, label, hint, action) => {
+    const button = el('button.button.button--quiet', {
+      type: 'button',
+      title: `${label} (${hint})`,
+      dataset: { action },
+    });
+    button.append(icon(name, 16), el('span.button__label', { text: label }));
+    return button;
+  };
+
+  const buttons = [
+    make('hint', 'Hint', 'Shift H', 'hint'),
+    make('takeback', 'Take back', 'Shift T', 'takeback'),
+  ];
+  const element = el('div.assist', {}, buttons);
+
+  return {
+    element,
+    setState({ thinking, canHint, canTakeback }) {
+      buttons[0].disabled = thinking || !canHint;
+      buttons[1].disabled = thinking || !canTakeback;
+    },
+    bind(actions) {
+      element.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-action]');
+        if (button && !button.disabled) actions[button.dataset.action]?.();
+      });
+    },
+  };
+}
+
+function buildPanel({
+  moveList,
+  enginePanel,
+  whiteClock,
+  blackClock,
+  openingLine,
+  statusLine,
+  transport,
+  assist,
+}) {
+  // The clocks, the status and the engine readout are pinned; only the move
+  // list scrolls. They used to share one scroller, so a long game pushed the
+  // clocks off the top of the screen — losing the most time-critical readout
+  // in the product at exactly the moment it matters most.
   const element = el('aside.panel', { 'aria-label': 'Game information' }, [
-    el('div.panel__scroll', {}, [
-      el('div.panel__section', {}, [
-        blackClock.container,
-        el('div', { style: { height: 'var(--space-2)' } }),
-        whiteClock.container,
-      ]),
+    el('div.panel__fixed', {}, [
+      el('div.panel__section.panel__clocks', {}, [blackClock.container, whiteClock.container]),
       el('div.panel__section', {}, [statusLine, openingLine]),
       el('div.panel__section', {}, [
         el('h2.panel__title', { text: 'Engine' }),
         enginePanel.element,
       ]),
-      el('div.panel__section', { style: { flex: '1' } }, [
-        el('h2.panel__title', { text: 'Moves' }),
-        moveList.element,
-      ]),
     ]),
+    el('section.panel__section.panel__moves', {}, [
+      el('h2.panel__title', { text: 'Moves' }),
+      moveList.element,
+      transport.element,
+    ]),
+    assist.element,
   ]);
   return { element };
 }

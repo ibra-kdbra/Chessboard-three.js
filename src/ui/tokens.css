@@ -24,7 +24,10 @@
 
   --text-1: #e8edf5;
   --text-2: #a4b0c2;
-  --text-3: #6d7a8d;
+  /* 4.81:1 against the worst surface it lands on. #6d7a8d measured 3.45:1
+     there and 4.20:1 on the panel — under AA in the default theme. */
+  --text-3: #8593a6;
+  --text-disabled: #55606f;
   --text-inverse: #0b0e13;
 
   /* -- accents ----------------------------------------------------------- */
@@ -45,7 +48,7 @@
   --quality-book: #a48ce0;
   --quality-inaccuracy: #f0c05a;
   --quality-mistake: #f08a3c;
-  --quality-blunder: #f0554b;
+  --quality-blunder: #ff7268;
 
   /* Eval bar: white's share vs black's. */
   --eval-white: #eef1f6;
@@ -97,7 +100,6 @@
 
   /* -- layout ------------------------------------------------------------ */
   --panel-width: 21rem;
-  --rail-width: 3.5rem;
   --header-height: 3.25rem;
 }
 
@@ -160,7 +162,8 @@
 
   --text-1: #131922;
   --text-2: #4a5666;
-  --text-3: #7a8798;
+  --text-3: #5f6b7c;
+  --text-disabled: #98a3b2;
   --text-inverse: #ffffff;
 
   --accent: #1668d6;
@@ -199,6 +202,20 @@
   --text-2: #cfd8e5;
   --text-3: #a7b3c4;
   --accent: #4fb0ff;
+}
+
+/*
+ * The same intent, inverted for the light theme. These overrides used to be
+ * unscoped, so turning high contrast on in the light theme painted near-white
+ * text onto white: measured 1.44:1 for body text and 2.34:1 for the focus ring,
+ * far worse than the ramp the mode exists to rescue.
+ */
+:root[data-theme='light'][data-contrast='high'] {
+  --border: #7a8798;
+  --border-strong: #4a5666;
+  --text-2: #2a3440;
+  --text-3: #3d4a5a;
+  --accent: #0b4fa8;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -32,6 +32,11 @@ export class ClockFace {
   /** @param {number|null} ms null renders as untimed */
   setTime(ms, { active = false, lowTimeMs = 30_000, flagged = false } = {}) {
     this.time.textContent = formatTime(ms);
+    // Untimed is the default time control, and two boxes rendering an infinity
+    // sign were taking the top quarter of the panel to say nothing. The row
+    // still marks whose turn it is; it just stops reserving space for a clock
+    // that does not exist.
+    this.element.dataset.untimed = String(ms === null);
     this.element.dataset.active = String(active);
     this.element.dataset.low = String(ms !== null && ms <= lowTimeMs);
     this.element.dataset.flagged = String(flagged);

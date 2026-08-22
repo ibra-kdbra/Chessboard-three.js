@@ -20,9 +20,18 @@ import { buildShareUrl, copyText, downloadText, suggestFilename } from './share.
 import { el, options } from '../ui/dom.js';
 import { showDialog } from '../ui/dialog.js';
 
-/** A labelled form row. */
+let fieldSeq = 0;
+
+/**
+ * A labelled form row.
+ *
+ * A real `<label for>`, not a span: styled text next to a control is not a
+ * label to anything that is not looking at it, and every select in these
+ * dialogs — plus the volume slider — reported no accessible name at all.
+ */
 function field(label, control) {
-  return el('div.field', {}, [el('span.field__label', { text: label }), control]);
+  if (!control.id) control.id = `field-${++fieldSeq}`;
+  return el('div.field', {}, [el('label.field__label', { text: label, for: control.id }), control]);
 }
 
 /**
@@ -474,7 +483,12 @@ export function createDialogs(context) {
         }),
         toggle('High-contrast highlights', settings.highContrast, (on) => {
           settings.highContrast = on;
+          // Both halves: the renderer's highlight palette and the interface
+          // tokens. Only the board was refreshed here, so the switch appeared
+          // to do nothing to the UI until some other setting happened to
+          // re-apply the theme, or until the next reload.
           applyBoardTheme();
+          applyInterfaceTheme(settings);
         }),
         toggle('Reduce motion', settings.reducedMotion, (on) => {
           settings.reducedMotion = on;

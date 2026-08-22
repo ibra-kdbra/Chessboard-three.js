@@ -77,7 +77,12 @@ export class MoveList {
     const mainline = tree.mainline();
 
     if (!mainline.length) {
-      replaceChildren(this.element, el('p.movelist__empty', { text: 'No moves yet.' }));
+      replaceChildren(
+        this.element,
+        el('p.movelist__empty', {
+          text: 'Play a move on the board, or type it — e4, Nf3, O-O — and press Enter.',
+        }),
+      );
       return;
     }
 
