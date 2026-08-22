@@ -132,6 +132,26 @@ npm run vendor -- --dev   # readable three build, for debugging
 Only the transitive closure of the addons actually imported is copied — 13 files
 rather than the 8.8MB `examples/jsm` tree.
 
+### Deploying
+
+There is nothing to build, so the site is whatever the repository already
+contains. `.github/workflows/pages.yml` uploads the tree as it stands and hands
+it to Pages.
+
+Two settings have to be right before that works, and neither lives in this
+repository:
+
+- **Settings → Actions → General** must allow workflows to run. With Actions
+  disabled the workflow never registers, and Pages reports that it cannot
+  deploy.
+- **Settings → Pages → Source** must be **GitHub Actions**. The alternative,
+  _Deploy from a branch_, also works — the tree is already static, and
+  `.nojekyll` stops Pages putting it through Jekyll first.
+
+The Actions tab lists workflows from the default branch only, so a workflow
+added on a feature branch runs on push but has no **Run workflow** button until
+it merges.
+
 ## Licence
 
 MIT, except for the bundled engines. Stockfish is **GPL-3.0**; see
