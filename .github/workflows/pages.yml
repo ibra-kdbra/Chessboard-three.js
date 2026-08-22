@@ -2,7 +2,11 @@ name: Deploy to Pages
 
 on:
   push:
-    branches: [main]
+    # The feature branch is here so the site can be previewed before it merges.
+    # `workflow_dispatch` cannot stand in for it: GitHub only offers the manual
+    # run for workflows that already exist on the default branch, and this one
+    # does not yet. Drop the second entry once it has merged.
+    branches: [main, chess-game-enhancement]
   workflow_dispatch:
 
 permissions:
