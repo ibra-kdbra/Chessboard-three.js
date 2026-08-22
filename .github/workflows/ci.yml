@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # The feature branch is here so the checks actually run on it. A plain push
+    # to a branch matches neither `main` nor `pull_request`, so nothing has ever
+    # validated it. Drop the second entry once it has merged.
+    branches: [main, chess-game-enhancement]
   pull_request:
 
 concurrency:
