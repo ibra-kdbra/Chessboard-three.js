@@ -142,6 +142,64 @@ describe('UciEngine', () => {
     expect(result.info?.score).toEqual({ type: 'cp', value: 100 });
   });
 
+  it('waits for a trailing evaluation that lands a whole task later', async () => {
+    // The scripted worker above replays a whole transcript in one microtask, so
+    // `bestmove` and `info` land together and any ordering passes. A real worker
+    // posts two separate messages: the engine must wait for the line itself, not
+    // for a timer that the browser is free to run first.
+    class Worker {
+      constructor() {
+        this.onmessage = null;
+      }
+      postMessage(command) {
+        const verb = command.split(' ')[0];
+        if (verb === 'uci') queueMicrotask(() => this.onmessage?.({ data: 'uciok' }));
+        else if (verb === 'isready') queueMicrotask(() => this.onmessage?.({ data: 'readyok' }));
+        else if (verb === 'go') {
+          queueMicrotask(() => {
+            this.onmessage?.({ data: 'bestmove e2e4' });
+            // Queued *after* whatever the engine scheduled while handling that
+            // line, so a deferral timer would run first and drop the score —
+            // which is exactly the race the browser loses in practice.
+            setTimeout(() => this.onmessage?.({ data: 'info depth 4 score cp 20' }), 0);
+          });
+        }
+      }
+      terminate() {}
+    }
+
+    const engine = new UciEngine({ profile: 'p4wn', workerFactory: () => new Worker() });
+    await engine.start();
+    const result = await engine.search('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+      depth: 4,
+    });
+
+    expect(result.bestmove).toBe('e2e4');
+    expect(result.info?.score, 'the trailing evaluation was dropped').toEqual({
+      type: 'cp',
+      value: 100,
+    });
+  });
+
+  it('still answers when a trailing-info engine sends no evaluation at all', async () => {
+    const Worker = scriptedWorker({
+      uci: ['uciok'],
+      isready: ['readyok'],
+      ucinewgame: [],
+      position: [],
+      go: ['bestmove e2e4'],
+    });
+    const engine = new UciEngine({ profile: 'p4wn', workerFactory: () => new Worker() });
+    await engine.start();
+    const result = await engine.search('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', {
+      depth: 4,
+    });
+
+    // The grace period is a floor, not a hang: the move still comes back.
+    expect(result.bestmove).toBe('e2e4');
+    expect(result.info).toBeNull();
+  });
+
   it('sends ucinewgame before the first position where the profile demands it', async () => {
     const workers = [];
     const Worker = scriptedWorker({

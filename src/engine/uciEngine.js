@@ -96,6 +96,18 @@ export function parseUciMove(uci) {
 }
 
 const HANDSHAKE_TIMEOUT_MS = 15_000;
+/**
+ * How long to hold a finished search open for an engine that posts `info`
+ * after `bestmove`. Only paid when such an engine sends no scored line at all;
+ * the line itself settles the search the moment it arrives.
+ */
+const TRAILING_INFO_GRACE_MS = 250;
+
+/** Releases both timers a search can be holding. */
+function stopTimers(search) {
+  clearTimeout(search.watchdog);
+  clearTimeout(search.grace);
+}
 
 /**
  * Tidies an engine's SAN into the form a player reads.
@@ -260,9 +272,12 @@ export class UciEngine extends Emitter {
 
       const info = this.#normaliseInfo(parseInfo(trimmed));
       if (info) {
-        this.#search?.onInfo?.(info);
-        if (info.pv || info.score) this.#search?.collect(info);
+        const search = this.#search;
+        search?.onInfo?.(info);
+        if (info.pv || info.score) search?.collect(info);
         this.emit('info', info);
+        // The line this engine was being held open for has arrived.
+        if (search?.pendingBest && search.lastInfo?.score) this.#settleSearch(search);
       }
 
       const best = parseBestMove(trimmed);
@@ -366,7 +381,7 @@ export class UciEngine extends Emitter {
       this.#search = null;
       // The watchdog holds the fen, the budget and the adapter itself for up
       // to half a minute; a disposed engine should not stay alive on a timer.
-      clearTimeout(search.watchdog);
+      stopTimers(search);
       search.reject(error);
     }
   }
@@ -429,6 +444,9 @@ export class UciEngine extends Emitter {
       onInfo: limits.onInfo,
       lastInfo: null,
       watchdog: null,
+      /** Set only while waiting for an engine that posts `info` after `bestmove`. */
+      pendingBest: null,
+      grace: null,
       collect(info) {
         // Copy rather than alias: the same object is handed to the `info`
         // listeners and to onInfo, and a consumer that normalises a score in
@@ -459,7 +477,7 @@ export class UciEngine extends Emitter {
       if (superseded) {
         this.#search = search;
         superseded.reject(new Error('search superseded'));
-        clearTimeout(superseded.watchdog);
+        stopTimers(superseded);
         this.#worker?.terminate();
         this.#worker = null;
         this.#newGameSent = false;
@@ -505,6 +523,12 @@ export class UciEngine extends Emitter {
       const ceiling = (budget.movetime ?? 4000) * 4 + 8000;
       search.watchdog = setTimeout(() => {
         if (this.#search !== search) return;
+        // A bestmove already in hand, only the trailing `info` outstanding:
+        // take the answer rather than throwing away a completed search.
+        if (search.pendingBest) {
+          this.#settleSearch(search);
+          return;
+        }
         this.emit('timeout', { fen, budget });
         // Report it as a timeout, not a cancellation: "the engine hung" and
         // "the user changed their mind" need different responses.
@@ -515,7 +539,7 @@ export class UciEngine extends Emitter {
     };
 
     run().catch((error) => {
-      clearTimeout(search.watchdog);
+      stopTimers(search);
       if (this.#search === search) this.#search = null;
       fail(error);
     });
@@ -526,27 +550,37 @@ export class UciEngine extends Emitter {
   #finishSearch(best) {
     if (!this.#search) return;
     const search = this.#search;
-    const settle = () => {
-      if (this.#search !== search) return;
-      this.#search = null;
-      clearTimeout(search.watchdog);
-      search.resolve({
-        bestmove: best.bestmove,
-        ponder: best.ponder,
-        info: this.#resolveMateSign(search.lastInfo, best),
-        lines: [...search.lines.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([multipv, info]) => ({ ...info, multipv })),
-      });
-    };
 
-    if (this.profile.infoAfterBestMove) {
+    if (this.profile.infoAfterBestMove && !search.lastInfo?.score) {
       // p4wn posts `bestmove` first and its only `info` line straight after.
-      // Settling immediately would throw away every evaluation it ever gives.
-      setTimeout(settle, 0);
-    } else {
-      settle();
+      // Settling now would throw away every evaluation it ever gives.
+      //
+      // Deferring by a timer is not enough: the queued `info` message and the
+      // timer callback sit on different task queues, so the browser is free to
+      // run the timer first and the score is dropped perhaps one run in three.
+      // Wait for the line itself instead, and treat the timer purely as the
+      // floor for an engine that turns out to send nothing.
+      search.pendingBest = best;
+      search.grace = setTimeout(() => this.#settleSearch(search), TRAILING_INFO_GRACE_MS);
+      return;
     }
+
+    this.#settleSearch(search, best);
+  }
+
+  #settleSearch(search, best = search.pendingBest) {
+    if (this.#search !== search || !best) return;
+    this.#search = null;
+    search.pendingBest = null;
+    stopTimers(search);
+    search.resolve({
+      bestmove: best.bestmove,
+      ponder: best.ponder,
+      info: this.#resolveMateSign(search.lastInfo, best),
+      lines: [...search.lines.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([multipv, info]) => ({ ...info, multipv })),
+    });
   }
 
   /**
@@ -561,7 +595,7 @@ export class UciEngine extends Emitter {
     if (!this.#search) return null;
     const search = this.#search;
     this.#search = null;
-    clearTimeout(search.watchdog);
+    stopTimers(search);
 
     this.#worker?.terminate();
     this.#worker = null;
