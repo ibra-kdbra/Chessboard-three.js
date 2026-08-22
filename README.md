@@ -138,8 +138,8 @@ There is nothing to build, so the site is whatever the repository already
 contains. `.github/workflows/pages.yml` uploads the tree as it stands and hands
 it to Pages.
 
-Two settings have to be right before that works, and neither lives in this
-repository:
+Three settings have to be right before that works, and none of them lives in
+this repository:
 
 - **Settings → Actions → General** must allow workflows to run. With Actions
   disabled the workflow never registers, and Pages reports that it cannot
@@ -147,6 +147,11 @@ repository:
 - **Settings → Pages → Source** must be **GitHub Actions**. The alternative,
   _Deploy from a branch_, also works — the tree is already static, and
   `.nojekyll` stops Pages putting it through Jekyll first.
+- **Settings → Environments → `github-pages`** must allow the branch. Choosing
+  the Actions source creates that environment restricted to the default branch,
+  and `pages.yml` names it, so a run from anywhere else is refused before its
+  first step. A `deploy` job that lasts two seconds, runs nothing and leaves no
+  log is this, not a build failure.
 
 The Actions tab lists workflows from the default branch only, so a workflow
 added on a feature branch runs on push but has no **Run workflow** button until
