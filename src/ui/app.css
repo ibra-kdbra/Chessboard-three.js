@@ -158,6 +158,7 @@ body {
 
 .topbar__utilities {
   display: flex;
+  flex: none;
   gap: var(--space-1);
   padding-left: var(--space-3);
   margin-left: var(--space-1);
@@ -173,6 +174,13 @@ body {
 /* --------------------------------------------------------------- controls -- */
 
 .button {
+  /*
+   * Positioned so the visually-hidden label the narrow layout uses stays inside
+   * it. Absolutely positioned with no positioned ancestor, that label resolved
+   * against the viewport and escaped every overflow clip on the way out — one
+   * 1px span, sitting past the right edge, scrolling the whole page sideways.
+   */
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -509,6 +517,9 @@ body {
   .topbar {
     padding: 0 var(--space-2);
     gap: var(--space-2);
+    /* The action row scrolls inside the header; without containment here its
+       overflow reached the document and the whole page scrolled sideways. */
+    overflow: hidden;
   }
 
   .topbar__brand {
@@ -517,7 +528,10 @@ body {
   }
 
   .topbar__actions {
+    flex: 1 1 auto;
+    min-width: 0;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
   }
 
