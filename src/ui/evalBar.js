@@ -35,7 +35,7 @@ export class EvalBar {
     // The bar always fills from the bottom of the board towards the top, and
     // the board can be flipped, so the share has to flip with it.
     const whiteShare = this.orientation === 'white' ? share : 1 - share;
-    this.white.style.height = `${(whiteShare * 100).toFixed(2)}%`;
+    this.white.style.transform = `scaleY(${whiteShare.toFixed(4)})`;
 
     // No sign: which side is ahead is already shown by where the divider sits,
     // and the column is only wide enough for four characters.

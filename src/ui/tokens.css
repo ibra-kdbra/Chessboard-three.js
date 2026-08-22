@@ -60,10 +60,16 @@
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
-  --text-xs: 0.6875rem; /* 11px */
-  --text-sm: 0.8125rem; /* 13px */
-  --text-md: 0.9375rem; /* 15px */
-  --text-lg: 1.125rem; /* 18px */
+  /*
+   * Four steps, none below 12px. The old ramp ran 10/11/13/15/16/18 — six sizes
+   * across a 1.8x span, with body text at 11px. The ratio stays in the
+   * 1.125-1.2 band that suits a product UI rather than the wider brand-surface
+   * contrast; the fix here is fewer sizes and a higher floor, not louder jumps.
+   */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-md: 1rem; /* 16px */
+  --text-lg: 1.25rem; /* 20px */
   --text-xl: 1.5rem; /* 24px */
   --text-2xl: 2rem; /* 32px */
 
