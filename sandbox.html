@@ -32,6 +32,7 @@
       }
       #board {
         min-width: 0;
+        min-height: 0;
       }
       #panel {
         padding: 16px;
@@ -75,6 +76,19 @@
         font-size: 11px;
         color: #7d8797;
         white-space: pre-wrap;
+      }
+      /* A fixed 260px sidebar leaves a phone about 150px of board — a dark
+         sliver rather than a chessboard. Stack the controls under it instead. */
+      @media (max-width: 720px) {
+        body {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-rows: minmax(0, 1fr) auto;
+        }
+        #panel {
+          border-left: 0;
+          border-top: 1px solid #232833;
+          max-height: 42dvh;
+        }
       }
     </style>
   </head>
