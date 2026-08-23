@@ -10,3 +10,7 @@ playwright-report/
 
 # Staging tree for tools/vendor.mjs; only present if a run failed part-way.
 vendor.tmp/
+
+# Scratch specs. Throwaway probes are named zz-* by convention; they measure
+# rather than assert and must never reach a commit or CI.
+tests/e2e/zz-*.spec.js
