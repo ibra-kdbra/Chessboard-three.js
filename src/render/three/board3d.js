@@ -814,6 +814,10 @@ export class Board3D extends Emitter {
 
       if (this.#dirty || tweening || cameraMoved || pulsing) {
         if (this.config.showNotation) this.#fadeFarNotation();
+        // Casters only move on a dirty frame or mid-tween. Orbiting the camera
+        // and pulsing an overlay leave the depth buffer untouched, and three
+        // clears the flag itself once the pass has run.
+        if (this.#dirty || tweening) this.view.renderer.shadowMap.needsUpdate = true;
         this.view.render();
         this.#dirty = false;
         this.frameBudget.sample(now);

@@ -257,6 +257,12 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
   renderer.toneMappingExposure = 0.72;
   renderer.shadowMap.enabled = tier.shadows;
   renderer.shadowMap.type = PCFSoftShadowMap;
+  // The only shadow-casting light is fixed and its ortho frustum is
+  // camera-independent, so the depth buffer can only change when a caster
+  // moves. Left on auto, three rebuilt a bit-identical 2048px map inside every
+  // render — 33 draw calls and 35,528 triangles per frame, on frames where
+  // nothing had moved at all. The render loop marks it when that is untrue.
+  renderer.shadowMap.autoUpdate = false;
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
