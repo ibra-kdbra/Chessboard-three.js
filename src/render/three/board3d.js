@@ -49,6 +49,9 @@ export const CAMERA_MODES = Object.freeze({
   cinematic: { id: 'cinematic', name: 'Cinematic', polar: Math.PI / 3.4, zoom: 0.98, drift: true },
 });
 
+/** How long the check/selection pulse runs before parking at rest. */
+const PULSE_MS = 2400;
+
 export class Board3D extends Emitter {
   /**
    * @param {HTMLElement} container
@@ -62,17 +65,27 @@ export class Board3D extends Emitter {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     if (!this.container) throw new Error('Board3D: container not found');
 
+    // Object spread copies a key even when its value is `undefined`, so a
+    // caller passing `{ quality: undefined }` used to erase the default below
+    // rather than fall back to it. The device probe ran and its answer was
+    // thrown away: every machine rendered at the 'high' tier, and the frame
+    // budget could never step down because `indexOf(undefined)` is -1. Drop
+    // absent values first so every default in this object is safe.
+    const given = Object.fromEntries(
+      Object.entries(config).filter(([, value]) => value !== undefined),
+    );
+
     this.config = {
       theme: DEFAULT_THEME,
       pieceSet: 'classic',
       orientation: 'white',
-      quality: config.quality ?? detectQuality(),
       interactive: true,
       showNotation: true,
       cameraControls: true,
       reducedMotion: false,
       assetPath: 'assets/models',
-      ...config,
+      ...given,
+      quality: given.quality ?? detectQuality(),
     };
 
     this.theme = getTheme(this.config.theme);
@@ -180,6 +193,10 @@ export class Board3D extends Emitter {
   }
 
   #hover = null;
+  /** Wall-clock deadline for the attention pulse; 0 when nothing is marked. */
+  #pulseUntil = 0;
+  #pulseMarks = '';
+  #wasPulsing = false;
   #selected = null;
   #highlightState = {};
 
@@ -523,10 +540,17 @@ export class Board3D extends Emitter {
 
   setHighlights(state) {
     this.#highlightState = state ?? {};
+    // The pointer path writes `#selected`; the keyboard path arrives here. The
+    // pulse only ever read the pointer field, so whether a selection pulsed
+    // depended on which device made it. Honour an explicit value either way —
+    // the `in` guard matters, since callers that omit the key (the sandbox
+    // among them) must keep whatever the pointer selected.
+    if (state && 'selected' in state) this.#selected = state.selected ?? null;
     this.#refreshHighlights();
   }
 
   #refreshHighlights() {
+    this.#armPulse();
     this.highlights.update({
       ...this.#highlightState,
       // The live pointer hover wins while the mouse is over a square; the
@@ -620,6 +644,13 @@ export class Board3D extends Emitter {
   setReducedMotion(enabled) {
     this.config.reducedMotion = enabled;
     this.ticker.reducedMotion = enabled;
+    // The pulse is motion too. It used to keep running here, because only the
+    // tween ticker was told.
+    if (enabled && this.#pulseUntil) {
+      this.#pulseUntil = 0;
+      this.highlights.settle();
+      this.#dirty = true;
+    }
   }
 
   /** Shows or hides the rank and file labels. */
@@ -771,8 +802,15 @@ export class Board3D extends Emitter {
       const cameraMoved = !cameraBefore.equals(this.view.camera.position);
 
       const tweening = this.ticker.update(now);
-      const pulsing = this.#hasPulse();
-      if (pulsing) this.highlights.animate(now - this.#startedAt);
+      const pulsing = now < this.#pulseUntil;
+      if (pulsing) {
+        this.highlights.animate(now - this.#startedAt);
+      } else if (this.#wasPulsing) {
+        // One last frame to park the overlays, then the board can go idle.
+        this.highlights.settle();
+        this.#dirty = true;
+      }
+      this.#wasPulsing = pulsing;
 
       if (this.#dirty || tweening || cameraMoved || pulsing) {
         if (this.config.showNotation) this.#fadeFarNotation();
@@ -787,8 +825,21 @@ export class Board3D extends Emitter {
     this.#frameHandle = requestAnimationFrame(frame);
   }
 
-  #hasPulse() {
-    return Boolean(this.#highlightState.check) || Boolean(this.#selected);
+  /**
+   * Re-arms the attention pulse when what it marks changes.
+   *
+   * The pulse used to run for as long as a piece stayed selected or a king
+   * stayed in check — an unbounded full-scene render, 124 draw calls a frame,
+   * to animate two material opacities. It exists to catch the eye, so it now
+   * runs for a few seconds and parks.
+   */
+  #armPulse() {
+    const marked = `${this.#highlightState.check ?? ''}|${this.#selected ?? ''}`;
+    if (marked === this.#pulseMarks) return;
+    this.#pulseMarks = marked;
+    const nothingMarked = marked === '|';
+    this.#pulseUntil =
+      nothingMarked || this.config.reducedMotion ? 0 : performance.now() + PULSE_MS;
   }
 
   /**

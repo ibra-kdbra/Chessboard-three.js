@@ -113,7 +113,9 @@ export async function bootstrap(root) {
         ? new Board3D(boardHost, {
             ...shared,
             pieceSet: settings.pieceSet,
-            quality: settings.quality ?? undefined,
+            // Only when the user has actually chosen one; otherwise let the
+            // board probe the device rather than being handed a non-answer.
+            ...(settings.quality ? { quality: settings.quality } : {}),
           })
         : new Board2D(boardHost, { ...shared, pieceSet: settings.pieceSet2d });
     instance.setTheme(themeFor());

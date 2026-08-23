@@ -165,3 +165,23 @@ test('a capture removes the captured piece, not the capturing one', async ({ pag
   expect(outcome.sceneChildren, 'an orphaned mesh was left in the scene').toBe(31);
   expect(errors).toEqual([]);
 });
+
+test('the board runs the quality tier the device probe chose', async ({ page }) => {
+  const errors = [];
+  guardConsole(page, errors);
+  await page.goto('/sandbox.html');
+  await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
+
+  const quality = await page.evaluate(() => ({
+    config: window.__board.config.quality,
+    view: window.__board.view.quality,
+  }));
+
+  // The probe's answer used to be discarded: `{ quality: undefined }` from the
+  // caller was spread over the computed default, so every device rendered at
+  // 'high' and the frame budget could never step down from a tier it could not
+  // name in QUALITY_ORDER.
+  expect(['low', 'medium', 'high', 'ultra']).toContain(quality.config);
+  expect(quality.view).toBe(quality.config);
+  expect(errors).toEqual([]);
+});

@@ -26,6 +26,9 @@ import {
 } from 'three';
 import { SQUARE_SIZE, squareToWorld } from './boardGeometry.js';
 
+/** Where the pulsed overlays rest once the pulse has run its course. */
+const REST_OPACITY = { check: 0.6, selected: 0.9 };
+
 const OVERLAY_Y = 0.014;
 const ARROW_Y = 0.09;
 
@@ -248,6 +251,18 @@ export class HighlightLayer {
     for (const mesh of this.pools.selected.items) {
       if (mesh.visible) mesh.material.opacity = 0.7 + 0.2 * Math.sin(elapsedMs / 260);
     }
+  }
+
+  /**
+   * Parks the pulsed overlays at their resting opacity.
+   *
+   * Each pooled mesh owns its own material, so a pulse that simply stopped
+   * left them frozen at whatever phase the last frame caught. The caller
+   * settles once when the pulse ends and then lets the board go idle.
+   */
+  settle() {
+    for (const mesh of this.pools.check.items) mesh.material.opacity = REST_OPACITY.check;
+    for (const mesh of this.pools.selected.items) mesh.material.opacity = REST_OPACITY.selected;
   }
 
   /**
