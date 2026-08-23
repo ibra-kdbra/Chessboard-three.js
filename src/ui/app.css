@@ -92,7 +92,14 @@ body {
 .stage {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  /*
+   * One column, because there is one child. Declared as `auto minmax(0, 1fr)`
+   * the frame landed in the auto track and sized to its own content, leaving
+   * the 1fr track as a phantom that ate the rest of the row — 59% of it in the
+   * 641-900px band, with the board shoved hard left. Above 900px the auto
+   * track happened to absorb everything, which is why it never showed.
+   */
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background: radial-gradient(120% 80% at 50% 0%, var(--surface-1) 0%, var(--surface-0) 70%);
@@ -479,10 +486,24 @@ body {
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
+  /*
+   * The panel becomes the scroller in this band. Capped at 45dvh with a fixed
+   * header that refuses to shrink, everything below it — the move list, the
+   * transport, hint and take back — was squeezed to nothing and unreachable.
+   */
   .panel {
     border-left: none;
     border-top: 1px solid var(--border);
     max-height: 45dvh;
+    overflow-y: auto;
+  }
+
+  .panel__moves {
+    flex: none;
+  }
+
+  .panel__moves .movelist {
+    overflow-y: visible;
   }
 }
 
