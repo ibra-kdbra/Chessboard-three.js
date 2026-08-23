@@ -194,13 +194,41 @@ export class GameState extends Emitter {
     return node;
   }
 
+  /**
+   * Steps back one ply.
+   *
+   * Incremental rather than a replay: stepping through a game funnelled every
+   * move through `syncToNode`, which rebuilds the position by re-validating
+   * every ply from the start. One step at move 60 re-checked 119 SAN moves,
+   * and walking a long game cost O(n^2) — which is why the app felt fine in a
+   * short game and heavy in a real one. The replay stays as the fallback, so a
+   * tree the rules engine disagrees with is still repaired.
+   */
   back() {
-    return this.tree.current.isRoot ? this.tree.current : this.goTo(this.tree.current.parent);
+    const node = this.tree.current;
+    if (node.isRoot) return node;
+    if (this.chess.undo()) {
+      this.tree.current = node.parent;
+      this.emit('change', { node: node.parent, reason: 'navigate' });
+      return node.parent;
+    }
+    return this.goTo(node.parent);
   }
 
+  /** Steps forward one ply along the mainline, the same way. */
   forward() {
     const next = this.tree.current.children[0];
-    return next ? this.goTo(next) : this.tree.current;
+    if (!next) return this.tree.current;
+    try {
+      if (this.chess.move(next.move.san)) {
+        this.tree.current = next;
+        this.emit('change', { node: next, reason: 'navigate' });
+        return next;
+      }
+    } catch {
+      // Falls through to the replay, which also repairs a corrupt tail.
+    }
+    return this.goTo(next);
   }
 
   toStart() {

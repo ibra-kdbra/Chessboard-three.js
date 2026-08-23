@@ -106,3 +106,92 @@ describe('GameState', () => {
     expect(restored.fen).toBe(state.fen);
   });
 });
+
+describe('GameState navigation', () => {
+  /** A real 40-ply game, so the walk is long enough to matter. */
+  const LONG_GAME = [
+    'e4',
+    'c5',
+    'Nf3',
+    'd6',
+    'd4',
+    'cxd4',
+    'Nxd4',
+    'Nf6',
+    'Nc3',
+    'a6',
+    'Be3',
+    'e5',
+    'Nb3',
+    'Be6',
+    'f3',
+    'Be7',
+    'Qd2',
+    'O-O',
+    'O-O-O',
+    'Nbd7',
+    'g4',
+    'b5',
+    'g5',
+    'b4',
+    'Ne2',
+    'Ne8',
+    'f4',
+    'a5',
+    'f5',
+    'a4',
+    'Nbd4',
+    'exd4',
+    'Nxd4',
+    'b3',
+    'Kb1',
+    'bxc2+',
+    'Nxc2',
+    'Bb3',
+    'axb3',
+    'axb3',
+  ];
+
+  const played = () => {
+    const state = new GameState();
+    for (const san of LONG_GAME) state.move(san);
+    return state;
+  };
+
+  it('steps back and forward to exactly the positions a full replay gives', () => {
+    // The incremental path must agree with the replay at every single ply, or
+    // the board and the rules engine drift apart without anything throwing.
+    const reference = played();
+    const fens = [];
+    reference.toStart();
+    fens.push(reference.fen);
+    for (let i = 0; i < LONG_GAME.length; i++) {
+      reference.goTo(reference.tree.current.children[0]); // replay every time
+      fens.push(reference.fen);
+    }
+
+    const state = played();
+    state.toStart();
+    expect(state.fen).toBe(fens[0]);
+    for (let i = 1; i <= LONG_GAME.length; i++) {
+      state.forward();
+      expect(state.fen, `forward to ply ${i}`).toBe(fens[i]);
+    }
+    for (let i = LONG_GAME.length - 1; i >= 0; i--) {
+      state.back();
+      expect(state.fen, `back to ply ${i}`).toBe(fens[i]);
+    }
+    expect(state.ply).toBe(0);
+  });
+
+  it('still repairs a tree the rules engine cannot replay', () => {
+    const state = played();
+    state.toStart();
+    // Corrupt a stored move: forward() must fall back to the replay, which
+    // stops at the last good position and cuts the unreachable tail.
+    state.tree.root.children[0].children[0].move.san = 'Qh8';
+    state.forward();
+    state.forward();
+    expect(state.ply).toBeLessThan(LONG_GAME.length);
+  });
+});
