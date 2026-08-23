@@ -361,6 +361,15 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
       samples: tier.msaa,
     });
     composer = new EffectComposer(renderer, renderTarget);
+    // EffectComposer clones the target for ping-pong, MSAA stores and all, but
+    // this chain never pings: RenderPass and UnrealBloomPass both declare
+    // needsSwap false and write into readBuffer, and OutputPass is last so it
+    // renders straight to the screen. writeBuffer is never bound — the clone
+    // was hundreds of megabytes of resident GPU memory nothing ever read.
+    // Adding a needsSwap pass anywhere but last would make read === write; the
+    // alias has to come back if that ever happens.
+    composer.renderTarget2.dispose();
+    composer.renderTarget2 = composer.renderTarget1;
     composer.addPass(new RenderPass(scene, camera));
     bloomPass = new UnrealBloomPass(
       new Vector2(buffer.x, buffer.y),
@@ -392,12 +401,21 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
      * reframes the board for the new aspect ratio.
      */
     resize({ refit = true, retilt = true } = {}) {
+      const pixelRatio = () => renderer.getPixelRatio();
       const rect = container.getBoundingClientRect();
       const width = Math.max(1, Math.floor(rect.width));
       const height = Math.max(1, Math.floor(rect.height));
       renderer.setSize(width, height, false);
       composer?.setSize(width, height);
-      bloomPass?.setSize(width, height);
+      // Bloom runs at a fixed fraction of the drawing buffer on purpose. Sized
+      // in CSS pixels it silently tracked the viewer's DPR, so the same page
+      // ran the bloom chain at four times the fill on a HiDPI screen for a
+      // difference measured at 0.2/255. Make the reduction explicit instead.
+      const bloomScale = 0.5;
+      bloomPass?.setSize(
+        Math.max(1, Math.round(width * pixelRatio() * bloomScale)),
+        Math.max(1, Math.round(height * pixelRatio() * bloomScale)),
+      );
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
 
