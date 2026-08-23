@@ -16,7 +16,10 @@ export default defineConfig({
     globals: false,
     reporters: process.env.CI ? ['default'] : ['dot'],
     coverage: {
-      include: ['src/core/**', 'src/engine/**'],
+      // src/app is in scope now that the DOM-free parts of it are tested; it
+      // was 59% of src and invisible to coverage, which is how a module with
+      // no tests at all looked the same as one with full coverage.
+      include: ['src/core/**', 'src/engine/**', 'src/app/**'],
       exclude: ['src/data/**'],
       reporter: ['text-summary'],
     },

@@ -86,8 +86,11 @@ export const QUALITY_TIERS = Object.freeze({
 export const QUALITY_ORDER = Object.freeze(['low', 'medium', 'high', 'ultra']);
 
 /** Camera framing. Distance is a starting point; fitCameraToBoard sets the real one. */
-export const CAMERA_DISTANCE = 26;
-export const CAMERA_POLAR_ANGLE = Math.PI / 4.4;
+// Defined in the leaf so the settings dialog can read the camera presets
+// without loading three; re-exported here because everything already imports
+// them from this module.
+export { CAMERA_DISTANCE, CAMERA_POLAR_ANGLE } from './cameraModes.js';
+import { CAMERA_DISTANCE, CAMERA_POLAR_ANGLE } from './cameraModes.js';
 export const CAMERA_TARGET = new Vector3(0, -0.6, 0);
 
 /** Half-extent of the board including its frame, for framing calculations. */
@@ -180,15 +183,7 @@ export function detectQuality() {
 }
 
 /** True when this browser can give us a WebGL context at all. */
-export function webGLEnabled() {
-  if (typeof document === 'undefined') return false;
-  try {
-    const canvas = document.createElement('canvas');
-    return !!(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
+export { webGLEnabled } from '../webgl.js';
 
 /**
  * Watches frame times and reports when the current tier is too expensive.

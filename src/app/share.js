@@ -27,10 +27,14 @@ function decodeBase64Url(text) {
 
 /**
  * @param {{ fen?: string, pgn?: string }} what
+ * @param {string} [href] the page to hang the fragment off; defaults to this one
  * @returns {string} an absolute URL
+ *
+ * The base is an argument with a default, matching `readShareTarget` below —
+ * the seam is what lets the link format be tested without a browser.
  */
-export function buildShareUrl({ fen, pgn }) {
-  const url = new URL(window.location.href);
+export function buildShareUrl({ fen, pgn }, href = window.location.href) {
+  const url = new URL(href);
   url.hash = '';
   if (pgn) return `${url.href}#game=${encodeBase64Url(pgn)}`;
   if (fen && fen !== START_FEN) return `${url.href}#fen=${encodeURIComponent(fen)}`;

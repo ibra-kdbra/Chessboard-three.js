@@ -30,7 +30,11 @@ export class Session extends Emitter {
    */
   constructor({ settings, workerFactory } = {}) {
     super();
-    this.settings = { ...settings };
+    // Shared, not copied. A copy meant the session and the app each mutated
+    // their own settings and drifted: the session wrote engine, difficulty,
+    // time control and player colour into a object nothing else read, while
+    // the dialogs wrote the same keys into the app's.
+    this.settings = settings ?? {};
     this.workerFactory = workerFactory;
     this.mode = 'engine';
     this.state = new GameState({ fen: START_FEN });
@@ -480,7 +484,9 @@ export class Session extends Emitter {
     return {
       mode: this.mode,
       playerColor: this.playerColor,
-      settings: this.settings,
+      // Deliberately not the settings: they are saved under their own key, and
+      // embedding a second copy here left localStorage holding two blobs that
+      // could disagree. Nothing has ever read this one back.
       clock: this.clock.toJSON(),
       state: this.state.toJSON(),
     };

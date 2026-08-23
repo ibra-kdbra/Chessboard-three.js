@@ -12,9 +12,7 @@
 import { Session } from './session.js';
 import { KeyboardControl } from './keyboard.js';
 import * as store from './persistence.js';
-import { Board3D } from '../render/three/board3d.js';
-import { Board2D } from '../render/two/board2d.js';
-import { webGLEnabled } from '../render/three/scene.js';
+import { webGLEnabled } from '../render/webgl.js';
 import { ACCESSIBLE_HIGHLIGHTS, getTheme } from '../render/three/themes.js';
 import { SoundEngine } from '../audio/soundEngine.js';
 import { ENGINE_PROFILES } from '../engine/engineProfiles.js';
@@ -29,9 +27,9 @@ import { Toaster } from '../ui/toast.js';
 import { askPromotion, showDialog } from '../ui/dialog.js';
 import { buildEvalGraph } from '../ui/evalGraph.js';
 import { createDialogs } from './dialogs.js';
+import { highlightState as buildHighlights } from './highlights.js';
 import { PIECE_NAMES, describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
-import { findHangingPieces } from '../core/staticEval.js';
 import { opposite } from '../core/constants.js';
 import { clearShareTarget, readShareTarget } from './share.js';
 
@@ -101,28 +99,41 @@ export async function bootstrap(root) {
     return settings.highContrast ? { ...theme, highlights: ACCESSIBLE_HIGHLIGHTS } : theme;
   }
 
-  function createBoard() {
+  /**
+   * Loads and mounts the renderer for the current setting.
+   *
+   * The two renderers are imported on demand rather than at module scope: the
+   * 3D one drags in the whole three.js runtime, and a visitor who has chosen
+   * the 2D board — or whose browser cannot give us WebGL — was downloading
+   * roughly a megabyte across 29 requests to render a canvas that never uses
+   * any of it.
+   */
+  async function createBoard() {
     const shared = {
       theme: settings.theme,
       reducedMotion: settings.reducedMotion,
       showNotation: settings.showCoordinates,
       orientation: session.playerColor === 'w' ? 'white' : 'black',
     };
-    const instance =
-      settings.dimensions === 3
-        ? new Board3D(boardHost, {
-            ...shared,
-            pieceSet: settings.pieceSet,
-            // Only when the user has actually chosen one; otherwise let the
-            // board probe the device rather than being handed a non-answer.
-            ...(settings.quality ? { quality: settings.quality } : {}),
-          })
-        : new Board2D(boardHost, { ...shared, pieceSet: settings.pieceSet2d });
+    let instance;
+    if (settings.dimensions === 3) {
+      const { Board3D } = await import('../render/three/board3d.js');
+      instance = new Board3D(boardHost, {
+        ...shared,
+        pieceSet: settings.pieceSet,
+        // Only when the user has actually chosen one; otherwise let the board
+        // probe the device rather than being handed a non-answer.
+        ...(settings.quality ? { quality: settings.quality } : {}),
+      });
+    } else {
+      const { Board2D } = await import('../render/two/board2d.js');
+      instance = new Board2D(boardHost, { ...shared, pieceSet: settings.pieceSet2d });
+    }
     instance.setTheme(themeFor());
     return instance;
   }
 
-  let board = createBoard();
+  let board = await createBoard();
 
   let selected = null;
   let hintMove = null;
@@ -136,36 +147,9 @@ export async function bootstrap(root) {
   let liveEvaluation = null;
 
   // ------------------------------------------------------------ board sync
+  /** The board's highlight state, from `./highlights.js`. */
   function highlightState() {
-    const status = session.status();
-    const last = session.state.node.move;
-    // The coach layer: pieces of the side to move that can simply be taken.
-    // Deliberately only the clear cases — an overlay that lights up half the
-    // board every move is noise, and players stop reading it.
-    const threatened =
-      settings.coachHints && !status.result.over
-        ? findHangingPieces(session.state.fen, status.turn)
-            .filter((entry) => entry.loss >= 100)
-            .slice(0, 3)
-            .map((entry) => entry.square)
-        : [];
-    return {
-      threatened,
-      // The keyboard cursor lives here so an unrelated refresh — a hint, a
-      // coach update — does not wipe the square the user is standing on.
-      hover: cursorSquare,
-      lastMove: last ? { from: last.from, to: last.to } : null,
-      check: status.check ? session.kingSquare(status.turn) : null,
-      hint: hintMove ? { from: hintMove.from, to: hintMove.to } : null,
-      selected,
-      legal:
-        selected && settings.showLegalMoves
-          ? session.state.legalMoves(selected).map((move) => ({
-              to: move.to,
-              capture: Boolean(move.captured),
-            }))
-          : [],
-    };
+    return buildHighlights({ session, settings, selected, cursorSquare, hintMove });
   }
 
   function syncBoard({ animate = true } = {}) {
@@ -286,7 +270,7 @@ export async function bootstrap(root) {
     const orientation = board.orientation();
     settings.dimensions = dimensions;
     board.destroy();
-    board = createBoard();
+    board = await createBoard();
     board.orientation(orientation);
     wireBoard();
     syncBoard({ animate: false });

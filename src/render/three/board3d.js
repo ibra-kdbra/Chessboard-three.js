@@ -11,6 +11,7 @@
  */
 import { Group, MathUtils, Spherical, Vector3 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CAMERA_MODES } from './cameraModes.js';
 import { Emitter } from '../../core/emitter.js';
 import { calculateAnimations, fenToPosition } from '../../core/positionDiff.js';
 import {
@@ -42,12 +43,7 @@ function cameraHome(orientation) {
  * `zoom` scales the fitted distance rather than setting an absolute one, so
  * every mode stays framed at any aspect ratio.
  */
-export const CAMERA_MODES = Object.freeze({
-  orbit: { id: 'orbit', name: 'Orbit', polar: CAMERA_POLAR_ANGLE, zoom: 1 },
-  top: { id: 'top', name: 'Top down', polar: 0.04, zoom: 0.94 },
-  low: { id: 'low', name: "Player's eye", polar: Math.PI / 2.5, zoom: 1.06 },
-  cinematic: { id: 'cinematic', name: 'Cinematic', polar: Math.PI / 3.4, zoom: 0.98, drift: true },
-});
+export { CAMERA_MODES } from './cameraModes.js';
 
 /** How long the check/selection pulse runs before parking at rest. */
 const PULSE_MS = 2400;

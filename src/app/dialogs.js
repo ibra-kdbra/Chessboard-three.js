@@ -11,9 +11,9 @@ import { DIFFICULTY_LEVELS } from '../engine/opponent.js';
 import { ENGINE_PROFILES } from '../engine/engineProfiles.js';
 import { TIME_CONTROLS } from '../core/clock.js';
 import { THEMES } from '../render/three/themes.js';
-import { PIECE_SETS } from '../render/three/pieces.js';
+import { PIECE_SETS } from '../render/three/pieceSets.js';
 import { PIECE_IMAGE_SETS } from '../render/two/board2d.js';
-import { CAMERA_MODES } from '../render/three/board3d.js';
+import { CAMERA_MODES } from '../render/three/cameraModes.js';
 import { SHORTCUTS } from './keyboard.js';
 import * as store from './persistence.js';
 import { buildShareUrl, copyText, downloadText, suggestFilename } from './share.js';
@@ -463,7 +463,9 @@ export function createDialogs(context) {
         field('Board', dimensionSelect),
         field('Board theme', themeSelect),
         field('Piece set', pieceSelect),
-        settings.dimensions === 3 ? field('Camera', cameraSelect) : null,
+        // What the mounted renderer actually supports, not what the setting
+        // says it should be — the two can disagree while a swap is in flight.
+        board().capabilities.cameraModes ? field('Camera', cameraSelect) : null,
         field('Interface', uiThemeSelect),
         toggle('Sound', settings.soundEnabled, (on) => {
           settings.soundEnabled = on;

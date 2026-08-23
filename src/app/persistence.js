@@ -119,7 +119,11 @@ export function loadLibrary() {
 
 export function addToLibrary(entry) {
   const list = loadLibrary();
-  list.unshift({ id: `g${Date.now().toString(36)}`, savedAt: Date.now(), ...entry });
+  // The id used to be the millisecond alone, so two games filed in the same
+  // millisecond shared one — and deleting either deleted both. The suffix
+  // makes it unique without needing a counter that survives a reload.
+  const id = `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  list.unshift({ id, savedAt: Date.now(), ...entry });
   return write('library', list.slice(0, LIBRARY_LIMIT));
 }
 
