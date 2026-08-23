@@ -196,20 +196,27 @@ test('the evaluation bar tracks the position while you think', async ({ page }) 
     window.__app.analyser.analyse(window.__app.session.state.fen, { turn: 'w' });
   });
 
+  // The fill is scaled rather than resized, so the share is the scaleY factor.
   await page.waitForFunction(
     () => {
       const bar = document.querySelector('.evalbar__white');
-      return bar && parseFloat(bar.style.height) > 70;
+      if (!bar) return false;
+      const match = /scaleY\(([\d.]+)\)/.exec(bar.style.transform);
+      return match ? Number(match[1]) > 0.7 : false;
     },
     { timeout: 45_000 },
   );
 
-  const reading = await page.evaluate(() => ({
-    height: document.querySelector('.evalbar__white').style.height,
-    label: document.querySelector('.evalbar__value').textContent,
-    aria: document.querySelector('.evalbar').getAttribute('aria-valuetext'),
-  }));
-  expect(parseFloat(reading.height)).toBeGreaterThan(70);
+  const reading = await page.evaluate(() => {
+    const bar = document.querySelector('.evalbar__white');
+    const match = /scaleY\(([\d.]+)\)/.exec(bar.style.transform);
+    return {
+      share: match ? Number(match[1]) : 0,
+      label: document.querySelector('.evalbar__value').textContent,
+      aria: document.querySelector('.evalbar').getAttribute('aria-valuetext'),
+    };
+  });
+  expect(reading.share).toBeGreaterThan(0.7);
   expect(reading.aria).toContain('White');
   expect(errors).toEqual([]);
 });
