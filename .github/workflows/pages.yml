@@ -2,11 +2,7 @@ name: Deploy to Pages
 
 on:
   push:
-    # The feature branch is here so the site can be previewed before it merges.
-    # `workflow_dispatch` cannot stand in for it: GitHub only offers the manual
-    # run for workflows that already exist on the default branch, and this one
-    # does not yet. Drop the second entry once it has merged.
-    branches: [main, chess-game-enhancement]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,7 +24,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       # The site needs no build: it is served exactly as it sits in the repo,
-      # ES modules and import map included.
+      # ES modules and import map included. What it does need is for the parts
+      # that are not the site to stay out of it — `blend/` alone is 4.3MB of
+      # Blender originals that exist to regenerate `assets/`, and nothing a
+      # visitor loads has ever pointed at them.
+      - name: Leave the build inputs behind
+        run: rm -rf blend tests tools
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
