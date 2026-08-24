@@ -24,6 +24,7 @@ import { ClockFace } from '../ui/clockFace.js';
 import { MoveList } from '../ui/moveList.js';
 import { EnginePanel } from '../ui/enginePanel.js';
 import { Toaster } from '../ui/toast.js';
+import { StarPrompt, GAMES_BEFORE_ASKING } from '../ui/starPrompt.js';
 import { askPromotion, showDialog } from '../ui/dialog.js';
 import { buildEvalGraph } from '../ui/evalGraph.js';
 import { createDialogs } from './dialogs.js';
@@ -32,6 +33,9 @@ import { PIECE_NAMES, describeMove } from '../ui/pieceGlyphs.js';
 import { formatEvaluation, reviewGame } from '../core/evaluation.js';
 import { opposite } from '../core/constants.js';
 import { clearShareTarget, readShareTarget } from './share.js';
+
+/** Where the star prompt sends people. */
+const REPOSITORY_URL = 'https://github.com/ibra-kdbra/Chessboard-three.js';
 
 export async function bootstrap(root) {
   const settings = store.loadSettings();
@@ -64,6 +68,10 @@ export async function bootstrap(root) {
 
   const transport = buildTransport();
   const assist = buildAssist();
+  const starPrompt = new StarPrompt({
+    url: REPOSITORY_URL,
+    onAnswer: () => store.markStarPromptAnswered(),
+  });
   const panel = buildPanel({
     moveList,
     enginePanel,
@@ -73,6 +81,7 @@ export async function bootstrap(root) {
     statusLine,
     transport,
     assist,
+    starPrompt,
   });
 
   const topbar = buildTopBar();
@@ -381,6 +390,17 @@ export async function bootstrap(root) {
     });
     if (answer === 'rematch') await startNewGame({ color: opposite(session.playerColor) });
     else if (answer === 'analyse') await runPostGameReview();
+
+    // After the result has been dealt with, never during it: the ask belongs
+    // behind the game, not in front of it.
+    maybeAskForAStar();
+  }
+
+  /** Shows the star prompt once, and only once someone has played a few games. */
+  function maybeAskForAStar() {
+    if (store.starPromptAnswered()) return;
+    if (store.loadLibrary().length < GAMES_BEFORE_ASKING) return;
+    starPrompt.show();
   }
 
   /**
@@ -748,6 +768,8 @@ export async function bootstrap(root) {
     analyser,
     setDimensions,
     destroy,
+    store,
+    maybeAskForAStar,
     /** The mounted renderer changes when dimensions are switched. */
     get board() {
       return board;
@@ -818,7 +840,7 @@ function buildTopBar() {
   const actions = el('div.topbar__actions');
   const utilities = el('div.topbar__utilities');
   const element = el('header.topbar', {}, [
-    el('h1.topbar__brand', { text: 'chessboard3' }),
+    el('h1.topbar__brand', { text: 'Boxwood' }),
     el('div.topbar__spacer'),
     actions,
     utilities,
@@ -982,6 +1004,7 @@ function buildPanel({
   statusLine,
   transport,
   assist,
+  starPrompt,
 }) {
   // The clocks, the status and the engine readout are pinned; only the move
   // list scrolls. They used to share one scroller, so a long game pushed the
@@ -1002,6 +1025,7 @@ function buildPanel({
       transport.element,
     ]),
     assist.element,
+    starPrompt.element,
   ]);
   return { element };
 }

@@ -7,6 +7,9 @@
  * persistence at all, so anything unreadable is discarded and replaced.
  */
 
+// Deliberately not the display name. This is the key everyone's saved games,
+// settings and library live under, so it must survive a rename — changing it
+// would silently orphan every game anyone has already played.
 const NAMESPACE = 'chessboard3';
 const VERSION = 1;
 
@@ -132,4 +135,18 @@ export function removeFromLibrary(id) {
     'library',
     loadLibrary().filter((entry) => entry.id !== id),
   );
+}
+
+/**
+ * Whether the star prompt has already had its one answer.
+ *
+ * Deliberately a single flag rather than a count: the ask happens once in a
+ * lifetime, and "declined" and "starred" both mean never again.
+ */
+export function starPromptAnswered() {
+  return read('star-prompt', false) === true;
+}
+
+export function markStarPromptAnswered() {
+  return write('star-prompt', true);
 }

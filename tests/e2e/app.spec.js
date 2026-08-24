@@ -374,3 +374,51 @@ test('shortcuts do not reach the game behind an open dialog', async ({ page }) =
   expect(after.orientation).toBe(before.orientation);
   expect(errors).toEqual([]);
 });
+
+test('the star prompt is earned, asks once, and takes no for an answer', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await page.goto('/');
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.reload();
+  await boot(page);
+
+  const shown = () =>
+    page.evaluate(() => {
+      const node = document.querySelector('.starprompt');
+      return node ? !node.hidden : 'missing';
+    });
+  const ask = () => page.evaluate(() => window.__app.maybeAskForAStar());
+  const finish = (count) =>
+    page.evaluate((n) => {
+      for (let i = 0; i < n; i++) window.__app.store.addToLibrary({ pgn: `g${i}`, result: '1-0' });
+    }, count);
+
+  // Nothing on arrival, and nothing before it has been earned.
+  expect(await shown()).toBe(false);
+  await finish(2);
+  await ask();
+  expect(await shown(), 'two games is not enough to have an opinion').toBe(false);
+
+  await finish(1);
+  await ask();
+  expect(await shown()).toBe(true);
+
+  // Declining is a real answer, and it sticks — this session and the next.
+  await page.click('.starprompt button');
+  expect(await shown()).toBe(false);
+  await ask();
+  expect(await shown()).toBe(false);
+
+  await page.reload();
+  await boot(page);
+  await ask();
+  expect(await shown(), 'a declined ask must not come back after a reload').toBe(false);
+  expect(errors.filter((e) => !e.includes('favicon'))).toEqual([]);
+});

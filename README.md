@@ -1,7 +1,10 @@
-# chessboard3
+# Boxwood
 
-A chess game in the browser, rendered in 3D with three.js — or in 2D, from the
-same code, when you would rather just read the board.
+Chess in three dimensions, in the browser.
+
+Boxwood is the wood a Staunton set is turned from, and that is what this is
+after: a board with weight to it. Rendered in 3D with three.js — or in 2D, from
+the same code, when you would rather just read the position.
 
 Play the computer at ten graded strengths or a friend on the same device. Clocks,
 a live evaluation bar, an opening book that names what you are playing, a move

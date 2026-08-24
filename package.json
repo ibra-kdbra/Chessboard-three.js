@@ -1,5 +1,5 @@
 {
-  "name": "chessboard3",
+  "name": "boxwood",
   "version": "2.0.0",
   "description": "A 3D/2D chess game and board library built on three.js — no bundler required.",
   "type": "module",

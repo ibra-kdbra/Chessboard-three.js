@@ -505,3 +505,40 @@
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
 }
+
+/* ----------------------------------------------------------- star prompt -- */
+
+/*
+ * Quiet by design. It sits at the foot of the panel rather than over the board,
+ * carries no accent fill of its own, and both answers are the same size — the
+ * point is to ask once and get out of the way, not to convert.
+ */
+.starprompt {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.starprompt__text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  text-wrap: pretty;
+}
+
+.starprompt__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.starprompt__actions > * {
+  flex: 1;
+  justify-content: center;
+}
+
+/* An anchor styled as a button still has to look like the rest of them. */
+.starprompt__accept {
+  text-decoration: none;
+}

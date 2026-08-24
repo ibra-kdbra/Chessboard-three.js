@@ -112,7 +112,7 @@ export function downloadText(filename, text, type = 'application/x-chess-pgn') {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** `chessboard3-2026-08-21-sicilian.pgn` */
+/** `boxwood-2026-08-21-sicilian.pgn` */
 export function suggestFilename(opening, date = new Date()) {
   const stamp = date.toISOString().slice(0, 10);
   const slug = opening
@@ -121,5 +121,5 @@ export function suggestFilename(opening, date = new Date()) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')}`
     : '';
-  return `chessboard3-${stamp}${slug}.pgn`;
+  return `boxwood-${stamp}${slug}.pgn`;
 }
