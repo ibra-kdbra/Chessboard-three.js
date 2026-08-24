@@ -185,3 +185,40 @@ test('the board runs the quality tier the device probe chose', async ({ page }) 
   expect(quality.view).toBe(quality.config);
   expect(errors).toEqual([]);
 });
+
+test('a static scene renders the same pixels every frame', async ({ page }) => {
+  const errors = [];
+  guardConsole(page, errors);
+  await page.goto('/sandbox.html');
+  await page.waitForFunction(() => window.__sandboxReady === true, { timeout: 30_000 });
+
+  // Force four renders of an unchanged scene and compare them pairwise. An
+  // alias that left the composer's read buffer pointing at a stale target made
+  // every second frame render at 300x150 and upscale — invisible to a
+  // screenshot test, which only ever samples one parity, and invisible to a
+  // pixel-count test, which would still see plenty of colours.
+  const frames = await page.evaluate(() => {
+    const board = window.__board;
+    const gl = board.view.renderer.getContext();
+    const width = gl.drawingBufferWidth;
+    const height = gl.drawingBufferHeight;
+    const shots = [];
+    for (let i = 0; i < 4; i++) {
+      board.view.render();
+      const pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      // Hash rather than ship four framebuffers across the bridge.
+      let hash = 2166136261;
+      for (let p = 0; p < pixels.length; p += 97) {
+        hash = Math.imul(hash ^ pixels[p], 16777619) >>> 0;
+      }
+      shots.push(hash);
+    }
+    return { shots, width, height };
+  });
+
+  expect(frames.width).toBeGreaterThan(300);
+  // All four identical: nothing moved, so nothing may change.
+  expect(new Set(frames.shots).size, `frame hashes ${frames.shots.join(', ')}`).toBe(1);
+  expect(errors).toEqual([]);
+});

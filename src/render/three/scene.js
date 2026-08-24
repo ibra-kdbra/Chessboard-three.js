@@ -356,15 +356,13 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
       samples: tier.msaa,
     });
     composer = new EffectComposer(renderer, renderTarget);
-    // EffectComposer clones the target for ping-pong, MSAA stores and all, but
-    // this chain never pings: RenderPass and UnrealBloomPass both declare
-    // needsSwap false and write into readBuffer, and OutputPass is last so it
-    // renders straight to the screen. writeBuffer is never bound — the clone
-    // was hundreds of megabytes of resident GPU memory nothing ever read.
-    // Adding a needsSwap pass anywhere but last would make read === write; the
-    // alias has to come back if that ever happens.
-    composer.renderTarget2.dispose();
-    composer.renderTarget2 = composer.renderTarget1;
+    // The composer keeps its own ping-pong clone. It looks like waste — this
+    // chain never reads writeBuffer — but aliasing the two together is not
+    // safe: OutputPass inherits `needsSwap = true` from Pass, so the composer
+    // swaps every frame, and reassigning the field leaves `readBuffer` holding
+    // the discarded clone. That clone is never resized, so every second frame
+    // renders the whole board into a 300x150 target and stretches it over the
+    // canvas. Leave the pair alone.
     composer.addPass(new RenderPass(scene, camera));
     bloomPass = new UnrealBloomPass(
       new Vector2(buffer.x, buffer.y),
