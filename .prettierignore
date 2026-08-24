@@ -1,0 +1,12 @@
+vendor/
+node_modules/
+legacy/
+engines/
+licenses/
+assets/
+img/
+blend/
+package-lock.json
+test-results/
+playwright-report/
+.probe/

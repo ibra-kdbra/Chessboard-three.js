@@ -324,8 +324,8 @@
             }
             var lightSquareMaterial = new THREE.MeshPhongMaterial({color: new THREE.Color(lightSquareColor)});
             /*
-            darkSquareMaterial.specularMap = THREE.ImageUtils.loadTexture("img/iris.png", undefined, function() {SPECULAR_MAPS_PENDING--;};);
-            lightSquareMaterial.specularMap = THREE.ImageUtils.loadTexture("img/grain.jpg", undefined, function() {SPECULAR_MAPS_PENDING--;};);
+            darkSquareMaterial.specularMap = THREE.ImageUtils.loadTexture("../img/iris.png", undefined, function() {SPECULAR_MAPS_PENDING--;};);
+            lightSquareMaterial.specularMap = THREE.ImageUtils.loadTexture("../img/grain.jpg", undefined, function() {SPECULAR_MAPS_PENDING--;};);
             */
 
             var GEOMETRIES = {

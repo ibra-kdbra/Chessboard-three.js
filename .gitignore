@@ -1,2 +1,16 @@
 .DS_Store
 .idea/
+node_modules/
+test-results/
+playwright-report/
+.vitest/
+
+# Scratch space for ad-hoc investigation scripts.
+.probe/
+
+# Staging tree for tools/vendor.mjs; only present if a run failed part-way.
+vendor.tmp/
+
+# Scratch specs. Throwaway probes are named zz-* by convention; they measure
+# rather than assert and must never reach a commit or CI.
+tests/e2e/zz-*.spec.js

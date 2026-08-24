@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, format and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+
+  assets:
+    name: Generated assets and vendored code are up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Re-converts from the legacy sources and checks the output against the
+      # retired three r80 loader. Catches a converter regression, and catches
+      # committed models that no longer match their source.
+      - run: npm run assets
+      - run: node tools/verify-models.mjs
+      - name: Converted models are unchanged
+        run: git add -A assets/models && git diff --cached --exit-code -- assets/models
+
+      # vendor/ is what the import map actually serves; package.json is what the
+      # tests resolve. Without this the two drift silently: a dependency bump
+      # would be tested green and then deployed as the old copy.
+      # Last in the job — vendor.mjs rebuilds the whole tree.
+      - run: npm run vendor
+      - name: Vendored dependencies match package.json
+        run: git add -A vendor && git diff --cached --exit-code -- vendor
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e -- --project=desktop
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
