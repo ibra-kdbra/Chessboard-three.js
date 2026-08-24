@@ -462,6 +462,8 @@ export class Session extends Emitter {
       result,
       opening,
       material: this.state.material(),
+      // Which side, if any, ran out of time. The panel dims the row that did.
+      flagged: this.clock.flagged,
       ply: this.state.ply,
       fen: this.state.fen,
     };

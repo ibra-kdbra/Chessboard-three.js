@@ -50,6 +50,30 @@ async function boot(page) {
   await page.waitForFunction(() => window.__app?.board?.ready === true, { timeout: 45_000 });
 }
 
+/**
+ * Waits for the page to finish reacting to a viewport change.
+ *
+ * The board canvas is resized by an observer on the frame after the viewport
+ * moves, and the header re-lays-out on the resize event, so measuring in the
+ * same tick reads the page mid-reflow. Waiting for the width to hold still for
+ * two frames is both faster and steadier than guessing at a delay.
+ */
+async function reflowed(page) {
+  await page.waitForFunction(
+    () =>
+      new Promise((resolve) => {
+        const read = () => document.documentElement.scrollWidth;
+        const first = read();
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            resolve(first === read());
+          }),
+        );
+      }),
+    { timeout: 15_000 },
+  );
+}
+
 test('boots, shows the start position and a full move list', async ({ page }) => {
   const errors = [];
   guard(page, errors);
@@ -421,4 +445,112 @@ test('the star prompt is earned, asks once, and takes no for an answer', async (
   await ask();
   expect(await shown(), 'a declined ask must not come back after a reload').toBe(false);
   expect(errors.filter((e) => !e.includes('favicon'))).toEqual([]);
+});
+
+test('the match band lights whoever is to move, on a clock that never runs', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  const lit = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.matchrow')]
+        .filter((row) => row.dataset.active === 'true')
+        .map((row) => row.querySelector('.matchrow__name').textContent),
+    );
+
+  // The default time control is unlimited, so the clock never starts. Reading
+  // the highlight from whichever clock was running meant that on the settings
+  // most people play with, neither row ever lit up.
+  expect(await lit()).toEqual(['White']);
+
+  await page.evaluate(() => {
+    window.__app.session.state.move('e4');
+    window.__app.session.emit('status', window.__app.session.status());
+  });
+  expect(await lit()).toEqual(['Black']);
+
+  // A finished game has no side to move, and a row still glowing after mate
+  // reads as "your turn".
+  await page.evaluate(() => {
+    for (const san of ['e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6', 'Qxf7#']) {
+      window.__app.session.state.move(san);
+    }
+    window.__app.session.emit('status', window.__app.session.status());
+  });
+  expect(await lit()).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('the header fits every screen it claims to support', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  for (const width of [1440, 1100, 960, 901, 899, 700, 640, 480, 420, 380, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await reflowed(page);
+    const measured = await page.evaluate(() => {
+      const controls = [
+        ...document.querySelectorAll(
+          '.topbar__identity > *, .topbar__nav > *, .topbar__actions > *, .topbar__utilities > *',
+        ),
+      ].map((node) => node.getBoundingClientRect());
+      let overlap = 0;
+      for (let i = 1; i < controls.length; i += 1) {
+        overlap = Math.max(overlap, controls[i - 1].right - controls[i].left);
+      }
+      const doc = document.documentElement;
+      return {
+        overlap,
+        pageOverflow: doc.scrollWidth - doc.clientWidth,
+        // Touch targets, ignoring the wordmark, which is text and not one.
+        undersized: controls.filter((r) => r.height > 0 && r.height < 43.5).length - 1,
+      };
+    });
+    // Seven controls and a wordmark needed 409px of row; at 380 the whole page
+    // scrolled sideways, and between 901 and 1037px the icons were drawn on
+    // top of "New game".
+    expect(measured.overlap, `controls overlap at ${width}px`).toBeLessThanOrEqual(0);
+    expect(measured.pageOverflow, `page scrolls sideways at ${width}px`).toBeLessThanOrEqual(1);
+    expect(measured.undersized, `targets under 44px at ${width}px`).toBeLessThanOrEqual(0);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('the overflow menu opens under the button that opens it', async ({ page }) => {
+  const errors = [];
+  guard(page, errors);
+  await boot(page);
+
+  for (const width of [1440, 900, 380]) {
+    await page.setViewportSize({ width, height: 800 });
+    await reflowed(page);
+    await page.click('[popovertarget="topbar-more"]');
+    const placed = await page.evaluate(() => {
+      const menu = document.getElementById('topbar-more').getBoundingClientRect();
+      const trigger = document
+        .querySelector('[popovertarget="topbar-more"]')
+        .getBoundingClientRect();
+      return {
+        rightAligned: Math.abs(menu.right - trigger.right) <= 2,
+        below: menu.top >= trigger.bottom,
+        onScreen:
+          menu.left >= 0 && menu.right <= window.innerWidth && menu.bottom <= window.innerHeight,
+        items: document.querySelectorAll('#topbar-more > *').length,
+      };
+    });
+    // The top layer has no idea where the trigger is; an unanchored popover
+    // lands in the corner of the window, over the wordmark.
+    expect(placed, `menu placement at ${width}px`).toMatchObject({
+      rightAligned: true,
+      below: true,
+      onScreen: true,
+    });
+    // Narrow screens demote controls into it rather than letting the row run
+    // off the edge, so it never comes back empty.
+    expect(placed.items).toBeGreaterThanOrEqual(4);
+    await page.keyboard.press('Escape');
+  }
+  expect(errors).toEqual([]);
 });

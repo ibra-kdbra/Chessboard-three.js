@@ -143,10 +143,22 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.topbar__brand {
+/*
+ * The wordmark and the star, as one thing.
+ *
+ * The star used to be the last item in the right-hand cluster, which is where a
+ * page puts what it hopes you will not click. Beside the name it is the second
+ * thing read, and it says what the name alone cannot: that this is a project
+ * you can go and look at.
+ */
+.topbar__identity {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.topbar__brand {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-bold);
@@ -157,39 +169,67 @@ body {
   flex: 1;
 }
 
+.topbar__nav {
+  display: flex;
+  flex: none;
+}
+
 .topbar__actions {
   display: flex;
   gap: var(--space-1);
+  /* `flex: none` is load-bearing. Without it the row was allowed to overflow
+     the space flex gave it and ran underneath the utilities cluster — measured
+     137px of overlap at 901px, with the icons drawn on top of "New game". */
+  flex: none;
   min-width: 0;
 }
 
+/* The primary action gets air, so the group before it reads as its own. */
+.topbar__actions .button--primary {
+  margin-left: var(--space-2);
+}
+
+/* In the top layer, so neither the app's `overflow: hidden` nor the action
+   row's own scroller can clip it. */
+.topbar__menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: var(--space-1);
+  min-width: 12rem;
+  /* Anchored by its right edge, so this is what keeps it on screen at any
+     width — it can never be wider than the window it is measured against. */
+  max-width: calc(100vw - 1rem);
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.topbar__menu:popover-open {
+  display: flex;
+}
+
+.topbar__menu .button {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+/*
+ * Chrome, after the game actions and behind a rule. Two controls: the settings
+ * you change and the menu that holds everything you almost never do.
+ */
 .topbar__utilities {
   display: flex;
   flex: none;
   gap: var(--space-1);
-  padding-left: var(--space-3);
-  margin-left: var(--space-1);
+  padding-left: var(--space-2);
+  margin-left: var(--space-2);
   border-left: 1px solid var(--border);
-}
-
-/*
- * The star link. Outlined rather than quiet, so it reads as an invitation
- * without competing with the primary game action beside it.
- */
-.starlink {
-  text-decoration: none;
-  background: transparent;
-  border-color: var(--border-strong);
-  color: var(--text-1);
-}
-
-.starlink:hover {
-  border-color: var(--warning);
-  color: var(--warning);
-}
-
-.starlink .icon {
-  color: var(--warning);
 }
 
 /* Drawn icons, one 24-grid and one stroke weight, sized by the button. */
@@ -290,6 +330,32 @@ body {
   background: color-mix(in oklab, var(--negative) 18%, var(--surface-3));
   border-color: var(--negative);
   color: var(--negative);
+}
+
+/*
+ * The star link, beside the wordmark.
+ *
+ * A ghost button carrying the only warm colour in the bar: loud enough to find
+ * without being a second call to action next to "New game". It was declared
+ * above `.button` before, at equal specificity, so its transparent background
+ * and border lost the cascade outright and it rendered as the only filled chip
+ * in the row — the exact opposite of what it needed to be.
+ */
+.starlink {
+  text-decoration: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
+.starlink:hover {
+  background: var(--surface-3);
+  border-color: transparent;
+  color: var(--text-1);
+}
+
+.starlink .icon {
+  color: var(--warning);
 }
 
 .button--icon {
@@ -412,6 +478,19 @@ body {
   flex: none;
 }
 
+/*
+ * The match band: both players and the state of the game, in one block.
+ *
+ * The padding is asymmetric on purpose. The rows carry their own inset, so the
+ * band only needs to hold them off the panel edges; the generous space is
+ * below, separating the band from the move list, which is the one division in
+ * the column that means anything.
+ */
+.panel__match {
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
 /* The only thing in the panel that scrolls, and it owns its own scroller so
    bringing the current move into view no longer drags the clocks away. */
 .panel__moves {
@@ -419,7 +498,7 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding-bottom: 0;
+  padding: var(--space-3) var(--space-4) 0;
 }
 
 .panel__moves .movelist {
@@ -431,28 +510,17 @@ body {
   padding-bottom: var(--space-1);
 }
 
-.panel__clocks {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.panel__section {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
-}
-
-.panel__section:last-child {
-  border-bottom: none;
-}
-
-.panel__title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+/*
+ * The engine readout, below the list rather than above it.
+ *
+ * It is ambient — you glance at it between moves — and at the top it was
+ * holding 94px of the fixed budget, above the move list, with a heading
+ * shouting ENGINE at something that already says its own name.
+ */
+.panel__engine {
+  flex: none;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-top: 1px solid var(--border);
 }
 
 /* ------------------------------------------------------------ transport --- */
@@ -479,12 +547,17 @@ body {
 
 /* Hint and take back. Labelled, because as glyphs "take back" and "back one
    move" were two similar marks with very different consequences. */
+/*
+ * No rule above it: the engine strip already opened the footer, and a second
+ * hairline 60px later divided nothing. The panel is down to two lines from
+ * four, and each of the two now marks a real change of subject — the players,
+ * the game, then the machine and what it can do for you.
+ */
 .assist {
   display: flex;
   gap: var(--space-2);
   flex: none;
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--border);
+  padding: 0 var(--space-4) var(--space-3);
 }
 
 .assist .button {
@@ -528,10 +601,11 @@ body {
 }
 
 @media (max-width: 900px) {
-  /* Six labelled buttons do not fit across a narrow header. Below this the
-     labels go and the icons carry them; the accessible name is on the button
-     either way. */
-  .topbar__actions .button__label {
+  /* Labels go, icons carry. The primary action keeps its label all the way
+     down: it is the one control here anybody came for, and a bare plus sign
+     does not say "new game". The accessible name is on the button either way. */
+  .topbar__nav .button__label,
+  .topbar__actions .button:not(.button--primary) .button__label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -541,7 +615,8 @@ body {
     white-space: nowrap;
   }
 
-  .topbar__actions .button {
+  .topbar__nav .button,
+  .topbar__actions .button:not(.button--primary) {
     padding: var(--space-2);
     min-width: 2.75rem;
   }
@@ -552,9 +627,9 @@ body {
     --header-height: 3.25rem;
   }
 
-  /* Seven icon buttons plus the wordmark is still more than a phone header
-     holds, so everything tightens and the row scrolls rather than overflowing
-     the page. */
+  /* Draw and Resign have moved into the menu by here — see the header's own
+     media query — so the row is the wordmark, the star, the library, one
+     primary action and two icons, and it no longer needs to scroll. */
   .topbar {
     padding: 0 var(--space-2);
     gap: var(--space-2);
@@ -562,29 +637,25 @@ body {
 
   .topbar__brand {
     font-size: var(--text-sm);
-    flex: none;
   }
 
-  .topbar__actions {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
+  .starlink .button__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
-  .topbar__actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Narrow, but never below the touch floor: these measured 32px wide before,
-     and the last of them was pushed clean off the right edge of the screen. */
-  .topbar__actions .button {
-    flex: none;
+  .starlink {
+    padding: var(--space-2);
     min-width: 2.75rem;
-    padding: var(--space-1);
   }
+}
 
+@media (max-width: 640px) {
   /*
    * Stacked, not a sheet.
    *
@@ -642,5 +713,37 @@ body {
 
   .evalbar {
     margin: var(--space-2) 0 var(--space-2) var(--space-2);
+  }
+}
+
+/* The last stop before the smallest phones.
+   Four 44px targets and a wordmark fit in 320px; the same four with "New game"
+   spelled out need 437, which is wider than the phone this is aimed at. The
+   library moves into the menu here too — see the header's own breakpoints. */
+@media (max-width: 480px) {
+  .topbar {
+    gap: var(--space-1);
+    padding: 0 var(--space-1);
+  }
+
+  .topbar__actions .button--primary .button__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .topbar__actions .button--primary {
+    padding: var(--space-2);
+    min-width: 2.75rem;
+    margin-left: 0;
+  }
+
+  .topbar__utilities {
+    padding-left: var(--space-1);
+    margin-left: var(--space-1);
   }
 }

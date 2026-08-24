@@ -54,9 +54,7 @@ export async function bootstrap(root) {
   const blackClock = new ClockFace({ color: 'b' });
   const enginePanel = new EnginePanel();
   const statusLine = el('div.status');
-  const openingLine = el('div', {
-    style: { fontSize: 'var(--text-xs)', color: 'var(--text-3)', minHeight: '1.1em' },
-  });
+  const openingLine = el('div.matchmeta__opening');
 
   const session = new Session({ settings });
   const moveList = new MoveList({
@@ -192,6 +190,13 @@ export async function bootstrap(root) {
     openingLine.textContent = status.opening
       ? `${status.opening.eco} · ${status.opening.name}`
       : '';
+
+    // Whose move it is, on the rows themselves. Nothing is lit once the game is
+    // over: a finished game has no side to move, and leaving a row glowing
+    // after a checkmate reads as "your turn".
+    const toMove = status.result.over ? null : status.turn;
+    whiteClock.setActive(toMove === 'w', status.flagged === 'w');
+    blackClock.setActive(toMove === 'b', status.flagged === 'b');
 
     const material = status.material;
     whiteClock.setCaptured(material.w, Math.max(0, material.balance));
@@ -342,8 +347,8 @@ export async function bootstrap(root) {
   session.on('thinking', () => renderStatus());
   session.on('evaluation', ({ info, turn }) => enginePanel.update(info, turn));
   session.on('clock', (snapshot) => {
-    whiteClock.setTime(snapshot.w, { active: snapshot.running === 'w' });
-    blackClock.setTime(snapshot.b, { active: snapshot.running === 'b' });
+    whiteClock.setTime(snapshot.w);
+    blackClock.setTime(snapshot.b);
   });
   session.on('lowtime', ({ color }) => {
     sound.play('lowtime');
@@ -593,27 +598,33 @@ export async function bootstrap(root) {
     newGame: () => dialogs.showNewGameDialog(),
   };
 
-  topbar.setActions(
-    [
-      ['Games', 'Browse your finished games', 'library', 'library'],
-      ['Import', 'Import a PGN game or FEN position', 'importGame', 'import'],
-      ['Export', 'Copy or download this game as PGN', 'exportGame', 'export'],
-      ['Share', 'Copy a link to this game', 'share', 'share'],
-      ['Draw', 'Offer a draw', 'draw', 'draw'],
-      ['Resign', 'Resign the game', 'resign', 'resign', 'danger'],
-      ['New game', 'Start a new game', 'newGame', 'newGame', 'primary'],
-    ],
-    (action) => actions[action]?.(),
+  const runAction = (action) => actions[action]?.();
+  topbar.setControls(
+    {
+      // Navigation, not a game action: it is the only control here that does
+      // not touch the game in front of you, so it does not sit with the ones
+      // that do.
+      nav: [['Games', 'Browse your finished games', 'library', 'library']],
+      actions: [
+        ['Draw', 'Offer a draw', 'draw', 'draw'],
+        ['Resign', 'Resign the game', 'resign', 'resign', 'danger'],
+        ['New game', 'Start a new game', 'newGame', 'newGame', 'primary'],
+      ],
+      // Real, but rarely. Three transfer actions and a shortcut sheet were
+      // taking more than half the row's permanent slots for things most players
+      // never touch — and on a phone that row ran off the edge of the screen.
+      overflow: [
+        ['Import', 'Import a PGN game or FEN position', 'importGame', 'import'],
+        ['Export', 'Copy or download this game as PGN', 'exportGame', 'export'],
+        ['Share', 'Copy a link to this game', 'share', 'share'],
+        // The shortcut sheet used to be reachable only by pressing the shortcut
+        // for it, which helps exactly the people who did not need it.
+        ['Keyboard shortcuts', 'Keyboard shortcuts (Shift ?)', 'help', 'help'],
+      ],
+    },
+    runAction,
   );
-  topbar.setUtilities(
-    [
-      // The shortcut sheet used to be reachable only by pressing the shortcut
-      // for it, which helps exactly the people who did not need it.
-      ['Keyboard shortcuts', 'Keyboard shortcuts (Shift ?)', 'help', 'help'],
-      ['Settings', 'Settings', 'settings', 'settings'],
-    ],
-    (action) => actions[action]?.(),
-  );
+  topbar.setUtilities([['Settings', 'Settings', 'settings', 'settings']], runAction);
   topbar.setStarLink({ url: REPOSITORY_URL, label: 'Star Boxwood' });
 
   // ------------------------------------------------------------- keyboard
@@ -837,58 +848,182 @@ function applyInterfaceTheme(settings) {
   root.dataset.contrast = settings.highContrast ? 'high' : 'normal';
 }
 
+/** One labelled button, used by the nav, the action row and the overflow menu. */
+function labelledButton([label, title, action, iconName, variant], onAction) {
+  const button = el('button.button', {
+    type: 'button',
+    class:
+      variant === 'primary'
+        ? 'button--primary'
+        : variant === 'danger'
+          ? 'button--danger'
+          : 'button--quiet',
+    title,
+    'aria-label': label,
+    on: { click: () => onAction(action) },
+  });
+  button.append(icon(iconName, 16), el('span.button__label', { text: label }));
+  return button;
+}
+
+/**
+ * The header.
+ *
+ * Reading order, left to right: who this is, where you can go, what you can do
+ * to the game in front of you, and then the chrome. The star sits with the
+ * wordmark rather than in the far corner — an open-source project's identity
+ * includes being one, and the corner is the last place anyone looks.
+ */
 function buildTopBar() {
+  const identity = el('div.topbar__identity', {}, [el('h1.topbar__brand', { text: 'Boxwood' })]);
+  const nav = el('div.topbar__nav');
   const actions = el('div.topbar__actions');
   const utilities = el('div.topbar__utilities');
+  // A popover, not an absolutely-positioned dropdown: `.app` is `overflow:
+  // hidden` and the action row scrolls on narrow screens, so a normal menu is
+  // clipped by both. The top layer is immune to either.
+  const menu = el('div.topbar__menu#topbar-more', { popover: 'auto' });
+  const trigger = el('button.button.button--quiet.button--icon', {
+    type: 'button',
+    title: 'More actions',
+    'aria-label': 'More actions',
+    popovertarget: 'topbar-more',
+  });
+  trigger.append(icon('more'));
+
   const element = el('header.topbar', {}, [
-    el('h1.topbar__brand', { text: 'Boxwood' }),
+    identity,
+    nav,
     el('div.topbar__spacer'),
     actions,
     utilities,
+    menu,
   ]);
+
+  // What the bar shows depends on how much bar there is. Controls move into the
+  // menu rather than shrinking below the touch floor or scrolling off the edge:
+  // seven controls plus a wordmark measured 409px of content in a 380px window,
+  // and pushed the whole page sideways.
+  //
+  // Two stops, in order of what a player gives up least. First the game actions
+  // that are not the primary one — a draw offer is a rare decision. Then the
+  // library, which is somewhere you go rather than something you do to the game
+  // in front of you.
+  //
+  // The width is read on resize rather than subscribed to with
+  // `matchMedia().onchange`: that event is not delivered at all under an
+  // emulated viewport, so the bar kept whatever layout it booted with and a
+  // phone got the desktop row.
+  const NARROW = 640;
+  const TINY = 480;
+  let navSpec = [];
+  let actionSpec = [];
+  let menuSpec = [];
+  let onAction = () => {};
+  let laidOut = null;
+
+  function render() {
+    const width = window.innerWidth;
+    const layout = width <= TINY ? 'tiny' : width <= NARROW ? 'narrow' : 'wide';
+    // Rebuilding on every resize event would throw away focus mid-drag, and
+    // the answer only changes twice across the whole range.
+    if (layout === laidOut) return;
+    laidOut = layout;
+
+    const demotedNav = layout === 'tiny' ? navSpec : [];
+    const demotedActions =
+      layout === 'wide' ? [] : actionSpec.filter((entry) => entry[4] !== 'primary');
+    const build = (spec) => spec.map((entry) => labelledButton(entry, onAction));
+    nav.replaceChildren(...build(navSpec.filter((entry) => !demotedNav.includes(entry))));
+    actions.replaceChildren(
+      ...build(actionSpec.filter((entry) => !demotedActions.includes(entry))),
+    );
+    // Navigation leads, then the actions it displaced, then the things that
+    // live here at every width.
+    menu.replaceChildren(...build([...demotedNav, ...demotedActions, ...menuSpec]));
+  }
+
+  window.addEventListener('resize', render);
+
+  // The top layer has no idea where the trigger is, so an unanchored popover
+  // lands in the corner of the viewport. CSS anchor positioning is not broadly
+  // supported yet, so the placement is measured on open.
+  //
+  // It anchors by `right`, not `left`, on purpose: the menu is still `display:
+  // none` while `beforetoggle` runs, so its own width cannot be read yet, and
+  // right-alignment is the one edge that does not need it. Measuring after the
+  // frame instead was the earlier attempt, and it lost the race often enough to
+  // leave the menu in the corner.
+  menu.addEventListener('beforetoggle', (event) => {
+    if (event.newState !== 'open') return;
+    const at = trigger.getBoundingClientRect();
+    menu.style.left = 'auto';
+    // Flush with the trigger, with no inset of its own: the button is already
+    // as close to the edge as the header lets anything get, and holding the
+    // menu 8px further in only broke the alignment on the narrowest phones.
+    // Staying inside the window is `max-width`'s job, not this one's.
+    menu.style.right = `${Math.round(Math.max(0, window.innerWidth - at.right))}px`;
+    menu.style.top = `${Math.round(at.bottom + 6)}px`;
+  });
+
+  // Picking something is a decision; the menu should not linger.
+  menu.addEventListener('click', (event) => {
+    if (event.target.closest('button')) menu.hidePopover();
+  });
 
   return {
     element,
+
     /**
+     * @param {object} spec
      * @param {Array<[label: string, title: string, action: string, icon: string,
-     *               variant?: string]>} spec
+     *               variant?: string]>} spec.nav where you can go, kept away
+     *   from the controls that act on the game in front of you
+     * @param {Array} spec.actions what the game can be told to do
+     * @param {Array} spec.overflow the same shape, for things that exist but do
+     *   not deserve permanent space
+     * @param {(action: string) => void} handler
      *
-     * Each button carries both an icon and a label; narrow screens show only
-     * the icon, because six labelled buttons do not fit across a phone and the
-     * row simply ran off the edge.
+     * All three lists go in together because the split between them moves with
+     * the window, and rendering one from a stale copy of another put duplicate
+     * controls in the bar.
      */
-    setActions(spec, onAction) {
-      actions.replaceChildren(
-        ...spec.map(([label, title, action, iconName, variant]) => {
-          const button = el('button.button', {
+    setControls({ nav: navItems, actions: actionItems, overflow }, handler) {
+      navSpec = navItems;
+      actionSpec = actionItems;
+      menuSpec = overflow;
+      onAction = handler;
+      laidOut = null;
+      render();
+    },
+
+    /**
+     * The chrome that is not part of playing. Separated from the game actions
+     * so a once-a-session control never sits beside one that ends the game.
+     */
+    setUtilities(spec, handler) {
+      utilities.replaceChildren(
+        ...spec.map(([label, title, action, iconName]) => {
+          const button = el('button.button.button--quiet.button--icon', {
             type: 'button',
-            class:
-              variant === 'primary'
-                ? 'button--primary'
-                : variant === 'danger'
-                  ? 'button--danger'
-                  : 'button--quiet',
             title,
             'aria-label': label,
-            on: { click: () => onAction(action) },
+            on: { click: () => handler(action) },
           });
-          button.append(icon(iconName, 16), el('span.button__label', { text: label }));
+          button.append(icon(iconName));
           return button;
         }),
+        trigger,
       );
     },
 
     /**
-     * The chrome that is not part of playing: help and settings. Separated from
-     * the game actions so a once-a-session control never sits beside one that
-     * ends the game.
-     */
-    /**
-     * The permanent star link, at the end of the bar.
+     * The permanent star link, beside the wordmark.
      *
      * The earned prompt in the panel is a nudge after a few games; this is the
-     * door that is always there. A star button nobody can find is not a
-     * marketing button.
+     * door that is always open. It used to be the last item in the far right
+     * cluster, which is where a page puts the things it hopes you will not
+     * click — the exact opposite of what it is for.
      */
     setStarLink({ url, label }) {
       const link = el('a.button.starlink', {
@@ -898,22 +1033,7 @@ function buildTopBar() {
         title: `${label} on GitHub`,
       });
       link.append(icon('star', 16), el('span.button__label', { text: 'Star' }));
-      utilities.append(link);
-    },
-
-    setUtilities(spec, onAction) {
-      utilities.replaceChildren(
-        ...spec.map(([label, title, action, iconName]) => {
-          const button = el('button.button.button--quiet.button--icon', {
-            type: 'button',
-            title,
-            'aria-label': label,
-            on: { click: () => onAction(action) },
-          });
-          button.append(icon(iconName));
-          return button;
-        }),
-      );
+      identity.append(link);
     },
   };
 }
@@ -1025,23 +1145,39 @@ function buildPanel({
   assist,
   starPrompt,
 }) {
-  // The clocks, the status and the engine readout are pinned; only the move
-  // list scrolls. They used to share one scroller, so a long game pushed the
-  // clocks off the top of the screen — losing the most time-critical readout
-  // in the product at exactly the moment it matters most.
+  // One band, not three sections.
+  //
+  // The two players, the status and the opening used to be three bordered
+  // blocks with a heading each, and together they held 239px of a 336px column
+  // whatever the window was doing. At 620px tall that left the move list 50px —
+  // one row of a game that might run eighty. They are one band now: a row per
+  // player carrying their own clock and captures, and a two-line footer for the
+  // state of the game.
+  //
+  // The engine readout moved to the bottom. It is ambient — you glance at it —
+  // and it was competing for the fixed budget at the top with the two things
+  // you actually read.
+  //
+  // Only the move list scrolls. The band is pinned, because a long game used to
+  // push the clocks off the top of the screen: losing the most time-critical
+  // readout in the product at exactly the moment it matters most.
   const element = el('aside.panel', { 'aria-label': 'Game information' }, [
-    el('div.panel__fixed', {}, [
-      el('div.panel__section.panel__clocks', {}, [blackClock.container, whiteClock.container]),
-      el('div.panel__section', {}, [statusLine, openingLine]),
-      el('div.panel__section', {}, [
-        el('h2.panel__title', { text: 'Engine' }),
-        enginePanel.element,
-      ]),
+    el('div.panel__fixed.panel__match', {}, [
+      el('h2.visually-hidden', { text: 'Players' }),
+      // The pair is one surface. Two bordered cards read as two things that
+      // happen to be near each other; one raised block with two rows in it
+      // reads as the match, which is what it is.
+      el('div.matchband', {}, [blackClock.element, whiteClock.element]),
+      el('div.matchmeta', {}, [statusLine, openingLine]),
     ]),
-    el('section.panel__section.panel__moves', {}, [
-      el('h2.panel__title', { text: 'Moves' }),
+    el('section.panel__moves', {}, [
+      el('h2.visually-hidden', { text: 'Moves' }),
       moveList.element,
       transport.element,
+    ]),
+    el('section.panel__engine', {}, [
+      el('h2.visually-hidden', { text: 'Engine' }),
+      enginePanel.element,
     ]),
     assist.element,
     starPrompt.element,
