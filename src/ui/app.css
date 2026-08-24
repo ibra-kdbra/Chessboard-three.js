@@ -172,6 +172,26 @@ body {
   border-left: 1px solid var(--border);
 }
 
+/*
+ * The star link. Outlined rather than quiet, so it reads as an invitation
+ * without competing with the primary game action beside it.
+ */
+.starlink {
+  text-decoration: none;
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+.starlink:hover {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.starlink .icon {
+  color: var(--warning);
+}
+
 /* Drawn icons, one 24-grid and one stroke weight, sized by the button. */
 .icon {
   flex: none;

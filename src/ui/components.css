@@ -513,6 +513,15 @@
  * carries no accent fill of its own, and both answers are the same size — the
  * point is to ask once and get out of the way, not to convert.
  */
+/*
+ * `display` here beats the `hidden` attribute's UA `display: none`, so without
+ * the guard below the strip kept a 25px empty band at the foot of the panel
+ * while claiming to be hidden.
+ */
+.starprompt[hidden] {
+  display: none;
+}
+
 .starprompt {
   display: grid;
   gap: var(--space-3);

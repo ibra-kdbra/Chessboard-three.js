@@ -614,6 +614,7 @@ export async function bootstrap(root) {
     ],
     (action) => actions[action]?.(),
   );
+  topbar.setStarLink({ url: REPOSITORY_URL, label: 'Star Boxwood' });
 
   // ------------------------------------------------------------- keyboard
   const keyboard = new KeyboardControl({
@@ -882,6 +883,24 @@ function buildTopBar() {
      * the game actions so a once-a-session control never sits beside one that
      * ends the game.
      */
+    /**
+     * The permanent star link, at the end of the bar.
+     *
+     * The earned prompt in the panel is a nudge after a few games; this is the
+     * door that is always there. A star button nobody can find is not a
+     * marketing button.
+     */
+    setStarLink({ url, label }) {
+      const link = el('a.button.starlink', {
+        href: url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        title: `${label} on GitHub`,
+      });
+      link.append(icon('star', 16), el('span.button__label', { text: 'Star' }));
+      utilities.append(link);
+    },
+
     setUtilities(spec, onAction) {
       utilities.replaceChildren(
         ...spec.map(([label, title, action, iconName]) => {
