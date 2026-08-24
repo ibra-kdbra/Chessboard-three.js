@@ -85,8 +85,17 @@ export class MoveList {
    */
   #describe(mainline) {
     const parts = [];
+    const push = (node) => parts.push(node.id, node.quality ?? '', node.nags.join(','));
     for (const node of mainline) {
-      parts.push(node.id, node.quality ?? '', node.nags.join(','), node.parent.children.length);
+      push(node);
+      // Every variation this list prints, not just how many start here: a
+      // sibling count is unchanged when a move is removed from inside one, so
+      // the list went on printing a move the tree no longer holds — still
+      // clickable, and clicking it did nothing at all.
+      for (const sibling of node.parent.children.slice(1)) {
+        for (let step = sibling; step; step = step.children[0]) push(step);
+        parts.push(')');
+      }
     }
     return parts.join('|');
   }

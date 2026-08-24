@@ -152,3 +152,47 @@ test('the app can switch between 2D and 3D without losing the game', async ({ pa
   expect(back.canvases).toBe(1);
   expect(errors).toEqual([]);
 });
+
+test('a second board swap during the first leaves exactly one board', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+
+  await page.goto('/index.html');
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__appReady === true, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__app?.board?.ready === true, { timeout: 45_000 });
+
+  // Both swaps are started without awaiting the first. The renderers load over
+  // the network now, so this is an ordinary double-click on the Board select:
+  // the old code read orientation off a board it had already destroyed and
+  // mounted both, leaving an orphaned canvas on top of a live board that was
+  // rendering off-screen — with nothing logged to say so.
+  await page.evaluate(() => {
+    window.__app.setDimensions(2);
+    window.__app.setDimensions(3);
+  });
+  await page.waitForFunction(() => window.__app.board.ready === true, { timeout: 45_000 });
+  await page.waitForTimeout(1500);
+
+  const state = await page.evaluate(() => {
+    const host = document.getElementById('board');
+    return {
+      canvases: host.querySelectorAll('canvas').length,
+      mounted: window.__app.board.capabilities.dimensions,
+      setting: window.__app.settings.dimensions,
+    };
+  });
+
+  expect(state.canvases, 'one board, not two').toBe(1);
+  // What is mounted and what the settings claim must agree.
+  expect(state.mounted).toBe(state.setting);
+  expect(errors).toEqual([]);
+});

@@ -133,8 +133,10 @@ export class Session extends Emitter {
   async newGame({ fen = START_FEN, color = this.playerColor, mode = this.mode } = {}) {
     await this.cancelThinking();
     this.mode = mode;
+    // The drawn colour lives on the session; the settings keep the player's
+    // *intent*. Writing the resolved colour back turned "Random side" into
+    // whichever side came up once, and every later game played that colour.
     this.playerColor = color === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : color;
-    this.settings.playerColor = this.playerColor;
     this.state = new GameState({ fen });
     this.#wireState();
     this.clock.reset();
@@ -381,7 +383,6 @@ export class Session extends Emitter {
 
   flip() {
     this.playerColor = opposite(this.playerColor);
-    this.settings.playerColor = this.playerColor;
     this.emit('status', this.status());
     return this.playerColor;
   }

@@ -260,7 +260,27 @@ export async function bootstrap(root) {
   }
   wireBoard();
 
-  /** Swaps 2D for 3D or back, preserving position and orientation. */
+  /** Counts swaps so a superseded one can throw away the board it built. */
+  let swapSeq = 0;
+
+  /**
+   * Swaps 2D for 3D or back, preserving position and orientation.
+   *
+   * Two things this has to survive, both of which arrived when the renderers
+   * started loading over the network rather than at page load:
+   *
+   * A second swap while the first is still importing. The old code destroyed
+   * the board up front, so the second call read orientation off a dead board
+   * and both calls went on to mount one — leaving an orphaned canvas covering
+   * a live board that was rendering off-screen, with no error to say so.
+   *
+   * An import that never arrives. Destroying first meant a failed fetch left
+   * no board mounted at all and nothing to recover with.
+   *
+   * So: build the replacement first, and only tear down the working one once
+   * there is something to put in its place and this swap is still the current
+   * one.
+   */
   async function setDimensions(dimensions) {
     if (dimensions === settings.dimensions) return;
     if (dimensions === 3 && !canUseWebGL) {
@@ -268,9 +288,27 @@ export async function bootstrap(root) {
       return;
     }
     const orientation = board.orientation();
+    const previous = settings.dimensions;
     settings.dimensions = dimensions;
+    const seq = ++swapSeq;
+
+    let next;
+    try {
+      next = await createBoard();
+    } catch {
+      if (seq === swapSeq) settings.dimensions = previous;
+      toaster.error('That board could not be loaded. Check your connection and try again.');
+      return;
+    }
+
+    if (seq !== swapSeq) {
+      // A later swap took over. Nothing else holds this one, so free it here.
+      next.destroy();
+      return;
+    }
+
     board.destroy();
-    board = await createBoard();
+    board = next;
     board.orientation(orientation);
     wireBoard();
     syncBoard({ animate: false });
