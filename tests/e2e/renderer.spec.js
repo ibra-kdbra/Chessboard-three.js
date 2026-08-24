@@ -282,7 +282,9 @@ test('the board fills the box a phone reserves for it', async ({ page }) => {
     await page.waitForFunction(
       () => {
         const canvas = document.querySelector('#board canvas').getBoundingClientRect();
-        return Math.abs(window.__app.board.view.camera.aspect - canvas.width / canvas.height) < 0.01;
+        return (
+          Math.abs(window.__app.board.view.camera.aspect - canvas.width / canvas.height) < 0.01
+        );
       },
       { timeout: 20_000 },
     );
