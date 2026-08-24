@@ -222,3 +222,87 @@ test('a static scene renders the same pixels every frame', async ({ page }) => {
   expect(new Set(frames.shots).size, `frame hashes ${frames.shots.join(', ')}`).toBe(1);
   expect(errors).toEqual([]);
 });
+
+test('the board fills the box a phone reserves for it', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.__appReady === true, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__app?.board?.ready === true, { timeout: 45_000 });
+
+  /**
+   * The board's silhouette, as a fraction of the canvas it is drawn on.
+   *
+   * Projects the eight corners of the board's bounding box by hand rather than
+   * through three.js, so the measurement does not depend on the page exposing
+   * a module it otherwise has no reason to.
+   */
+  const coverage = () =>
+    page.evaluate(() => {
+      const camera = window.__app.board.view.camera;
+      camera.updateMatrixWorld(true);
+      const mul = (m, v) => {
+        const e = m.elements;
+        return [
+          e[0] * v[0] + e[4] * v[1] + e[8] * v[2] + e[12] * v[3],
+          e[1] * v[0] + e[5] * v[1] + e[9] * v[2] + e[13] * v[3],
+          e[2] * v[0] + e[6] * v[1] + e[10] * v[2] + e[14] * v[3],
+          e[3] * v[0] + e[7] * v[1] + e[11] * v[2] + e[15] * v[3],
+        ];
+      };
+      const R = 10.3;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (const x of [-R, R]) {
+        for (const z of [-R, R]) {
+          for (const y of [0, 3.2]) {
+            const c = mul(camera.projectionMatrix, mul(camera.matrixWorldInverse, [x, y, z, 1]));
+            minX = Math.min(minX, c[0] / c[3]);
+            maxX = Math.max(maxX, c[0] / c[3]);
+            minY = Math.min(minY, c[1] / c[3]);
+            maxY = Math.max(maxY, c[1] / c[3]);
+          }
+        }
+      }
+      const canvas = document.querySelector('#board canvas').getBoundingClientRect();
+      return {
+        width: (maxX - minX) / 2,
+        height: (maxY - minY) / 2,
+        drawnHeight: Math.round(((maxY - minY) / 2) * canvas.height),
+      };
+    });
+
+  const settle = async (width, height) => {
+    await page.setViewportSize({ width, height });
+    // Headless Chromium produces no frames while nothing is animating, and a
+    // ResizeObserver is only delivered as part of a frame. Without this the
+    // camera is still framed for the previous viewport and every number below
+    // is a measurement of the wrong thing.
+    await page.screenshot({ path: 'test-results/shots/framing-settle.png' });
+    await page.waitForFunction(
+      () => {
+        const canvas = document.querySelector('#board canvas').getBoundingClientRect();
+        return Math.abs(window.__app.board.view.camera.aspect - canvas.width / canvas.height) < 0.01;
+      },
+      { timeout: 20_000 },
+    );
+  };
+
+  await settle(390, 844);
+  const phone = await coverage();
+  // A square box held a board that drew two thirds of it: 122px of empty table
+  // above and below on a 390px screen, which reads as a small board rather than
+  // as framing. The box is the shape the board projects to now, and the flatter
+  // tilt a phone gets makes the board bigger inside it rather than smaller.
+  expect(phone.height, 'the board must fill the height a phone reserves').toBeGreaterThan(0.85);
+  expect(phone.width).toBeGreaterThan(0.9);
+  expect(phone.drawnHeight, 'and be bigger than the square box drew').toBeGreaterThan(280);
+
+  // The desktop composition is deliberate and must not move: the tilt only
+  // eases for canvases too small to read one at the resting angle.
+  await settle(1440, 900);
+  const desktop = await coverage();
+  expect(desktop.width).toBeGreaterThan(0.95);
+  expect(desktop.height).toBeGreaterThan(0.78);
+  expect(desktop.height).toBeLessThan(0.83);
+});

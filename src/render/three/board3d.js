@@ -24,6 +24,7 @@ import {
   createScene,
   detectQuality,
   fitCameraToBoard,
+  polarForAspect,
 } from './scene.js';
 import { buildBoard, squareToWorld } from './boardGeometry.js';
 import { HighlightLayer } from './highlights.js';
@@ -595,9 +596,27 @@ export class Board3D extends Emitter {
     this.#drawInstant(this.position);
   }
 
+  /**
+   * The angle the default view rests at, for the canvas it is drawing into.
+   *
+   * `CAMERA_MODES.orbit.polar` is the angle on a desktop, not everywhere: a
+   * phone looks further down, both because a near-square canvas wastes a
+   * shallow projection and because 41 degrees across 350px puts the back rank
+   * at 60% of the front. The named modes mean the angle they say.
+   */
+  #restingPolar() {
+    return polarForAspect(this.view.camera.aspect, this.container.getBoundingClientRect().width);
+  }
+
   setCameraMode(mode) {
     const preset = CAMERA_MODES[mode] ?? CAMERA_MODES.orbit;
     this.cameraMode = preset.id;
+    // The default view follows the viewport; picking `top` or `low` is a
+    // decision, and a decision is honoured. Reading the preset's own angle here
+    // undid the framing on every board that emitted `ready` — which is every
+    // board, on every load — so a phone tilted itself back to the desktop shot
+    // a moment after arriving at the right one.
+    const polar = preset.id === 'orbit' ? this.#restingPolar() : preset.polar;
 
     const from = new Spherical().setFromVector3(
       this.view.camera.position.clone().sub(CAMERA_TARGET),
@@ -606,7 +625,7 @@ export class Board3D extends Emitter {
     // tween lands on a shot that actually fits rather than one that crops.
     const probe = this.view.camera.clone();
     probe.position
-      .setFromSpherical(new Spherical(from.radius, preset.polar, from.theta))
+      .setFromSpherical(new Spherical(from.radius, polar, from.theta))
       .add(CAMERA_TARGET);
     const fitted = fitCameraToBoard(probe, CAMERA_TARGET) * preset.zoom;
     if (this.controls) {
@@ -620,7 +639,7 @@ export class Board3D extends Emitter {
       onUpdate: (t) => {
         const spherical = new Spherical(
           MathUtils.lerp(from.radius, fitted, t),
-          MathUtils.lerp(from.phi, preset.polar, t),
+          MathUtils.lerp(from.phi, polar, t),
           from.theta,
         );
         this.view.camera.position.setFromSpherical(spherical).add(CAMERA_TARGET);

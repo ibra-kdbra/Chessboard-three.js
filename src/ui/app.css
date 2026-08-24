@@ -697,9 +697,17 @@ body {
     overflow: visible;
   }
 
-  /* The board is square in portrait, and the eval bar matches it exactly. */
+  /*
+   * The box is the shape the board draws, not a square.
+   *
+   * A square reserved 390px of height on a 390px phone for a board that drew
+   * 268 of it — 122px of empty table above and below, a third of the box, which
+   * read as "the board is small" rather than as framing. At the tilt this width
+   * gets (see polarForAspect) the silhouette is about 1.15:1, and the eval bar
+   * takes 42px off the width, so 1.29 is the box that fits it.
+   */
   .stage__frame {
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 1.29;
     max-height: 55dvh;
     margin-inline: auto;
     width: 100%;

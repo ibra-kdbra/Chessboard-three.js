@@ -96,20 +96,37 @@ export const CAMERA_TARGET = new Vector3(0, -0.6, 0);
 /** Half-extent of the board including its frame, for framing calculations. */
 export const BOARD_RADIUS = 10.3;
 
+/** Where the camera ends up when it is looking as far down as it ever does. */
+const CAMERA_POLAR_MIN = 0.22;
+
 /**
- * How far to tilt the camera for a given viewport shape.
+ * How far to tilt the camera for the canvas it is drawing into.
  *
- * A 41-degree view of a square board projects to a wide, shallow shape. That
- * suits a landscape canvas and wastes a portrait one, where fitting the width
- * then pushes the camera so far back the board becomes a stripe. Tall viewports
- * therefore look further down, which squares the projection up again.
+ * Two things pull the view downward, and the stronger of them wins.
+ *
+ * Shape: a 41-degree view of a square board projects to a wide, shallow shape.
+ * That suits a landscape canvas and wastes a portrait one, where fitting the
+ * width then pushes the camera so far back the board becomes a stripe.
+ *
+ * Size: a phone is not a small desktop. At 350px across, 41 degrees renders the
+ * back rank at 60% of the front and the pieces standing on it overlap each
+ * other, so the board is at its least readable exactly where the screen is
+ * smallest. Looking further down evens the squares out — and, because a flatter
+ * board projects taller, it also comes out physically bigger: 298px against
+ * 268px in the same box.
+ *
+ * Keyed to width rather than to shape on purpose. The layout picks the box from
+ * what the board projects to, so a tilt that read the box back would chase its
+ * own tail across resizes.
  *
  * @param {number} aspect width / height
+ * @param {number} [width] canvas width in CSS pixels
  * @returns {number} polar angle in radians, measured from straight down
  */
-export function polarForAspect(aspect) {
-  const portraitness = Math.max(0, Math.min(1, (1.15 - aspect) / 0.75));
-  return CAMERA_POLAR_ANGLE * (1 - portraitness) + 0.22 * portraitness;
+export function polarForAspect(aspect, width = Infinity) {
+  const clamp = (value) => Math.max(0, Math.min(1, value));
+  const down = Math.max(clamp((1.15 - aspect) / 0.75), clamp((640 - width) / 400));
+  return CAMERA_POLAR_ANGLE * (1 - down) + CAMERA_POLAR_MIN * down;
 }
 
 /**
@@ -418,7 +435,7 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
         const spherical = new Spherical().setFromVector3(
           camera.position.clone().sub(CAMERA_TARGET),
         );
-        spherical.phi = polarForAspect(camera.aspect);
+        spherical.phi = polarForAspect(camera.aspect, width);
         camera.position.setFromSpherical(spherical).add(CAMERA_TARGET);
         camera.lookAt(CAMERA_TARGET);
       }
