@@ -25,6 +25,7 @@ import {
   detectQuality,
   fitCameraToBoard,
   polarForAspect,
+  viewportShortEdge,
 } from './scene.js';
 import { buildBoard, squareToWorld } from './boardGeometry.js';
 import { HighlightLayer } from './highlights.js';
@@ -105,6 +106,8 @@ export class Board3D extends Emitter {
   /** Bumped by every setPosition, so a stale one knows not to finish. */
   #positionEpoch = 0;
   #frameHandle = null;
+  /** The camera-mode tween, while one is running, so a resize can call it off. */
+  #cameraTween = null;
   #dragging = null;
 
   get capabilities() {
@@ -605,7 +608,7 @@ export class Board3D extends Emitter {
    * at 60% of the front. The named modes mean the angle they say.
    */
   #restingPolar() {
-    return polarForAspect(this.view.camera.aspect, this.container.getBoundingClientRect().width);
+    return polarForAspect(this.view.camera.aspect, viewportShortEdge());
   }
 
   setCameraMode(mode) {
@@ -633,7 +636,8 @@ export class Board3D extends Emitter {
       this.controls.maxDistance = Math.max(this.controls.maxDistance, fitted * 1.75);
     }
 
-    this.ticker.tween({
+    this.#cameraTween?.cancel();
+    this.#cameraTween = this.ticker.add({
       duration: 700,
       ease: easing.easeInOutCubic,
       onUpdate: (t) => {
@@ -646,7 +650,10 @@ export class Board3D extends Emitter {
         this.view.camera.lookAt(CAMERA_TARGET);
         this.#dirty = true;
       },
-      onComplete: () => this.controls?.update(),
+      onComplete: () => {
+        this.#cameraTween = null;
+        this.controls?.update();
+      },
     });
     return preset;
   }
@@ -687,6 +694,14 @@ export class Board3D extends Emitter {
   }
 
   resize() {
+    // A resize has just framed the camera for the box it now has. A camera-mode
+    // tween still in flight is aiming at the shot the previous box called for,
+    // and over its remaining few hundred milliseconds it would drag the camera
+    // back there. That is not a corner case: the opening tween runs on every
+    // load, so any layout that settles or any window resized in that first
+    // moment ended up framed for a viewport that no longer existed.
+    this.#cameraTween?.cancel();
+    this.#cameraTween = null;
     const { distance } = this.view.resize();
     if (this.controls && distance) {
       // Let the viewer zoom either side of the framed shot, but never so far

@@ -100,6 +100,13 @@ export const BOARD_RADIUS = 10.3;
 const CAMERA_POLAR_MIN = 0.22;
 
 /**
+ * The screen size at which the view starts tipping downward, and the width of
+ * the ramp below it. A 390px phone lands at 20.6 degrees and a 768px tablet at
+ * the full resting angle, which is where each of them reads best.
+ */
+const SMALL_SCREEN = 680;
+
+/**
  * How far to tilt the camera for the canvas it is drawing into.
  *
  * Two things pull the view downward, and the stronger of them wins.
@@ -108,25 +115,33 @@ const CAMERA_POLAR_MIN = 0.22;
  * That suits a landscape canvas and wastes a portrait one, where fitting the
  * width then pushes the camera so far back the board becomes a stripe.
  *
- * Size: a phone is not a small desktop. At 350px across, 41 degrees renders the
- * back rank at 60% of the front and the pieces standing on it overlap each
+ * Size: a phone is not a small desktop. On a 390px screen, 41 degrees renders
+ * the back rank at 60% of the front and the pieces standing on it overlap each
  * other, so the board is at its least readable exactly where the screen is
  * smallest. Looking further down evens the squares out — and, because a flatter
- * board projects taller, it also comes out physically bigger: 298px against
+ * board projects taller, it also comes out physically bigger: 287px against
  * 268px in the same box.
  *
- * Keyed to width rather than to shape on purpose. The layout picks the box from
- * what the board projects to, so a tilt that read the box back would chase its
- * own tail across resizes.
+ * That second term reads the device, not the canvas. Reading the canvas made
+ * the tilt a function of how much room the layout happened to give the board,
+ * so narrowing the canvas flattened the board and shrank it — which is exactly
+ * backwards when the narrowing is the layout trimming space the board was not
+ * using. The short edge is the same number in either orientation, so a phone
+ * held sideways is still a phone.
  *
  * @param {number} aspect width / height
- * @param {number} [width] canvas width in CSS pixels
+ * @param {number} [shortEdge] the viewport's shorter side, in CSS pixels
  * @returns {number} polar angle in radians, measured from straight down
  */
-export function polarForAspect(aspect, width = Infinity) {
+export function polarForAspect(aspect, shortEdge = Infinity) {
   const clamp = (value) => Math.max(0, Math.min(1, value));
-  const down = Math.max(clamp((1.15 - aspect) / 0.75), clamp((640 - width) / 400));
+  const down = Math.max(clamp((1.15 - aspect) / 0.75), clamp((SMALL_SCREEN - shortEdge) / 400));
   return CAMERA_POLAR_ANGLE * (1 - down) + CAMERA_POLAR_MIN * down;
+}
+
+/** How big the screen is, whichever way up it is being held. */
+export function viewportShortEdge() {
+  return Math.min(window.innerWidth, window.innerHeight);
 }
 
 /**
@@ -435,7 +450,7 @@ export function createScene(container, theme, { quality = 'high', antialias = tr
         const spherical = new Spherical().setFromVector3(
           camera.position.clone().sub(CAMERA_TARGET),
         );
-        spherical.phi = polarForAspect(camera.aspect, width);
+        spherical.phi = polarForAspect(camera.aspect, viewportShortEdge());
         camera.position.setFromSpherical(spherical).add(CAMERA_TARGET);
         camera.lookAt(CAMERA_TARGET);
       }
