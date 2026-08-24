@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { GameTree } from '../../src/core/gameTree.js';
-import { Chess } from 'chess.js';
 
 /**
  * The move list skips a rebuild when the markup would be identical. That
